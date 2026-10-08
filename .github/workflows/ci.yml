@@ -21,6 +21,6 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # Tests run with src/test/resources/application.yml (H2 in-memory DB), so no external DB or env vars are needed
+      # Tests start a PostgreSQL container via Testcontainers (Docker is preinstalled on ubuntu-latest), so no external DB or env vars are needed
       - name: Build and test
         run: ./gradlew build

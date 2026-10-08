@@ -1,15 +1,11 @@
-# Test-only config - boots the context on an H2 in-memory DB without an external DB or env vars
+# Test-only config - the DB comes from a Testcontainers PostgreSQL container (see TestcontainersConfig)
 spring:
-  datasource:
-    url: jdbc:h2:mem:testdb;MODE=PostgreSQL
-    username: sa
-    password:
-    driver-class-name: org.h2.Driver
   flyway:
-    enabled: false # Tests build the schema with H2 + create-drop
+    enabled: true # Run the same migrations as production
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: validate # Fail the test if entities and migrations drift apart
+    open-in-view: false
 
 jwt:
   secret: test-secret-key-must-be-at-least-32-bytes-long
