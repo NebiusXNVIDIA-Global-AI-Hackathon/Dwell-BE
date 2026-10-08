@@ -1,23 +1,19 @@
 package com.dwell.global.common;
 
 
-import jakarta.persistence.EntityListeners;
+import jakarta.persistence.Column;
 import jakarta.persistence.MappedSuperclass;
 import lombok.Getter;
-import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 
+// For tables that have both created_at and modified_at
 @Getter
 @MappedSuperclass
-@EntityListeners(AuditingEntityListener.class)
-public abstract class BaseTimeEntity {
-
-    @CreatedDate
-    private LocalDateTime createdDate;
+public abstract class BaseTimeEntity extends BaseCreatedTimeEntity {
 
     @LastModifiedDate
-    private LocalDateTime modifiedDate;
+    @Column(nullable = false)
+    private LocalDateTime modifiedAt;
 }
