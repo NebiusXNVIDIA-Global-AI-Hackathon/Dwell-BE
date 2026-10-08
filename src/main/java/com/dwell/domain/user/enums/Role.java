@@ -1,4 +1,4 @@
-package com.dwell.domain.user.entity;
+package com.dwell.domain.user.enums;
 
 public enum Role {
     USER,

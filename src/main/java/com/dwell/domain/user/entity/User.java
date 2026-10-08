@@ -1,5 +1,7 @@
 package com.dwell.domain.user.entity;
 
+import com.dwell.domain.user.enums.AuthProvider;
+import com.dwell.domain.user.enums.Role;
 import com.dwell.global.common.BaseTimeEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -20,17 +22,47 @@ public class User extends BaseTimeEntity {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false)
-    private String password;
+    // NULL for Google sign-up users
+    private String passwordHash;
+
+    @Column(nullable = false, length = 50)
+    private String firstName;
+
+    @Column(nullable = false, length = 50)
+    private String lastName;
+
+    // en/zh/es, the language of the native mirror
+    @Column(nullable = false, length = 10)
+    private String preferredLanguage;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     private Role role;
 
+    private String profileImageKey;
+
+    @Column(unique = true, length = 30)
+    private String nickname;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private AuthProvider authProvider = AuthProvider.LOCAL;
+
+    // Google sub
+    private String providerId;
+
     @Builder
-    public User(String email, String password, Role role) {
+    public User(String email, String passwordHash, String firstName, String lastName, String preferredLanguage,
+                Role role, AuthProvider authProvider, String providerId) {
         this.email = email;
-        this.password = password;
+        this.passwordHash = passwordHash;
+        this.firstName = firstName;
+        this.lastName = lastName;
+        this.preferredLanguage = preferredLanguage;
         this.role = role;
+        if (authProvider != null) {
+            this.authProvider = authProvider;
+        }
+        this.providerId = providerId;
     }
 }
