@@ -1,0 +1,90 @@
+name: GPT Code Review
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    types: [ opened, synchronize, reopened, ready_for_review ]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# Cancel the previous review run when new commits are pushed to the same PR
+concurrency:
+  group: gpt-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract diff
+        id: diff
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git diff "origin/$BASE_REF"...HEAD -- . \
+            ':(exclude)gradle/wrapper/**' \
+            ':(exclude)*.lock' > diff.txt
+          head -c 60000 diff.txt > diff_trimmed.txt
+          echo "size=$(wc -c < diff.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Request GPT review
+        if: steps.diff.outputs.size != '0'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4o-mini' }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          jq -n \
+            --arg model "$MODEL" \
+            --rawfile prompt .github/gpt-review-prompt.md \
+            --arg title "$PR_TITLE" \
+            --arg body "$PR_BODY" \
+            --rawfile diff diff_trimmed.txt \
+            '{
+              model: $model,
+              messages: [
+                { role: "system", content: $prompt },
+                { role: "user", content: ("PR title: " + $title + "\n\nPR description:\n" + $body + "\n\n```diff\n" + $diff + "\n```") }
+              ]
+            }' > request.json
+
+          curl -sS --fail-with-body https://api.openai.com/v1/chat/completions \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d @request.json > response.json
+
+          {
+            echo "<!-- gpt-review -->"
+            echo "## 🤖 GPT Code Review"
+            echo
+            jq -r '.choices[0].message.content' response.json
+            echo
+            echo "---"
+            echo "<sub>Reviewed at commit \`${GITHUB_SHA::7}\` · model: $MODEL</sub>"
+          } > review.md
+
+      - name: Create or update PR comment
+        if: steps.diff.outputs.size != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          COMMENT_ID=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- gpt-review -->"))) | .id' \
+            | tail -n 1)
+
+          if [ -n "$COMMENT_ID" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$COMMENT_ID" -F body=@review.md
+          else
+            gh pr comment "$PR_NUMBER" --body-file review.md
+          fi

@@ -1,0 +1,41 @@
+# Run (from the project root): ./gradlew bootJar && docker compose --env-file .env -f docker/docker-compose.yml up -d --build
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: dwell
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      TZ: America/New_York # Container OS timezone
+      PGTZ: America/New_York # PostgreSQL default timezone
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # -h localhost: the temporary server used during first-boot init listens only on a unix socket, so checking over TCP avoids a false "ready"
+      test: ["CMD-SHELL", "pg_isready -h localhost -U ${DB_USERNAME} -d dwell"]
+      interval: 10s
+      retries: 5
+      start_period: 30s # first-boot init can be slow on a small EC2 instance
+
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: ${DOCKERHUB_USERNAME:-local}/dwell-backend:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/dwell
+      TZ: America/New_York
+
+volumes:
+  postgres_data:

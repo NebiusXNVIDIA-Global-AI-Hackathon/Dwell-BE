@@ -1,0 +1,19 @@
+# Test-only config - boots the context on an H2 in-memory DB without an external DB or env vars
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  flyway:
+    enabled: false # Tests build the schema with H2 + create-drop
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+
+jwt:
+  secret: test-secret-key-must-be-at-least-32-bytes-long
+  access-token-expiration: 3600000
+
+cors:
+  allowed-origins: http://localhost:3000
