@@ -25,15 +25,9 @@ public class User extends BaseTimeEntity {
     // NULL for Google sign-up users
     private String passwordHash;
 
-    @Column(nullable = false, length = 50)
-    private String firstName;
-
-    @Column(nullable = false, length = 50)
-    private String lastName;
-
     // en/zh/es, the language of the native mirror
     @Column(nullable = false, length = 10)
-    private String preferredLanguage;
+    private String preferredLanguage = "en";
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -52,13 +46,14 @@ public class User extends BaseTimeEntity {
     private String providerId;
 
     @Builder
-    public User(String email, String passwordHash, String firstName, String lastName, String preferredLanguage,
+    public User(String email, String passwordHash, String nickname, String preferredLanguage,
                 Role role, AuthProvider authProvider, String providerId) {
         this.email = email;
         this.passwordHash = passwordHash;
-        this.firstName = firstName;
-        this.lastName = lastName;
-        this.preferredLanguage = preferredLanguage;
+        this.nickname = nickname;
+        if (preferredLanguage != null) {
+            this.preferredLanguage = preferredLanguage;
+        }
         this.role = role;
         if (authProvider != null) {
             this.authProvider = authProvider;

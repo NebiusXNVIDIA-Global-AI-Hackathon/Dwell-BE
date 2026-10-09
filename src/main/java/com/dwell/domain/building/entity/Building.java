@@ -1,5 +1,6 @@
 package com.dwell.domain.building.entity;
 
+import com.dwell.domain.building.enums.UsState;
 import com.dwell.global.common.BaseCreatedTimeEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -28,8 +29,9 @@ public class Building extends BaseCreatedTimeEntity {
     @Column(nullable = false, length = 50)
     private String city;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 2)
-    private String state;
+    private UsState state;
 
     @Column(nullable = false, length = 10)
     private String zip;
@@ -37,7 +39,7 @@ public class Building extends BaseCreatedTimeEntity {
     private LocalDateTime hpdSyncedAt;
 
     @Builder
-    public Building(String bbl, String street, String city, String state, String zip) {
+    public Building(String bbl, String street, String city, UsState state, String zip) {
         this.bbl = bbl;
         this.street = street;
         this.city = city;
