@@ -22,7 +22,7 @@ public class UserController {
 
     // 회원가입
     @Operation(summary = "Sign up", description = "Registers a user with account info and home address.")
-    @PostMapping("/auth/signup")
+    @PostMapping("/user/signup")
     public ResponseEntity<BaseResponse<UserSignUpResponse>> signUp(
             @Valid @RequestBody UserSignUpRequest request) {
 
@@ -35,7 +35,7 @@ public class UserController {
 
     // 이메일 중복 조회
     @Operation(summary = "Check email availability", description = "Returns true if the email is not taken.")
-    @GetMapping("/auth/email-availability")
+    @GetMapping("/user/email-availability")
     public ResponseEntity<BaseResponse<Boolean>> checkEmail(
             @RequestParam String email) {
 
@@ -48,7 +48,7 @@ public class UserController {
 
     // 닉네임 중복 조회
     @Operation(summary = "Check nickname availability", description = "Returns true if the nickname is not taken.")
-    @GetMapping("/auth/nickname-availability")
+    @GetMapping("/user/nickname-availability")
     public ResponseEntity<BaseResponse<Boolean>> checkNickname(
             @RequestParam String nickname) {
 
