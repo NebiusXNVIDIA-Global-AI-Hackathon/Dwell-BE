@@ -48,8 +48,12 @@ public class SecurityConfig {
                         ).permitAll()
 
                         // Sign-up, login, etc. are accessible without authentication
-                        .requestMatchers("/api/v1/auth/**")
-                        .permitAll()
+                        .requestMatchers(
+                                "/api/v1/auth/**",
+                                "/api/v1/user/signup",
+                                "/api/v1/user/email-availability",
+                                "/api/v1/user/nickname-availability"
+                        ).permitAll()
 
                         // All other APIs require authentication
                         .anyRequest().authenticated()
