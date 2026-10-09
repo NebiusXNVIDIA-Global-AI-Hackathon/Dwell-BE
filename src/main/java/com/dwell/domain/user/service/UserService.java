@@ -32,16 +32,16 @@ public class UserService {
     @Transactional
     public UserSignUpResponse signUp(UserSignUpRequest request) {
 
-        // 닉네임이 중복되는지 조회
-        if (userRepository.existsByNickname(request.getNickname())) {
-            log.warn("[UserService] Duplicate nickname: nickname={}", request.getNickname());
-            throw new CustomException(UserErrorCode.DUPLICATE_NICKNAME);
-        }
-
         // 비밀번호와 비밀번호 확인이 일치하는지 조회
         if (!request.getPassword().equals(request.getPasswordConfirm())) {
             log.warn("[UserService] Passwords do not match");
             throw new CustomException(UserErrorCode.PASSWORD_MISMATCH);
+        }
+
+        // 닉네임이 중복되는지 조회
+        if (userRepository.existsByNickname(request.getNickname())) {
+            log.warn("[UserService] Duplicate nickname: nickname={}", request.getNickname());
+            throw new CustomException(UserErrorCode.DUPLICATE_NICKNAME);
         }
 
         // 중복된 이메일인지 조회
