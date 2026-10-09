@@ -1,6 +1,6 @@
 package com.dwell.domain.assistant.enums;
 
 public enum ConversationType {
-    GENERAL,
+    OTHER,
     CASE
 }
