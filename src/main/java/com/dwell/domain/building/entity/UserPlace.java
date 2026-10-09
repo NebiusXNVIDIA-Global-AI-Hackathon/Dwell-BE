@@ -27,7 +27,7 @@ public class UserPlace extends BaseTimeEntity {
     private Building building;
 
     // e.g. Apt 4B
-    @Column(nullable = false, length = 20)
+    @Column(length = 20)
     private String unit;
 
     // Parsed from unit (Apt 4B -> 4), used for pattern detection
