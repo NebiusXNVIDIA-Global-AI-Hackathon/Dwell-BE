@@ -26,4 +26,14 @@ public interface AssistantService {
      * @return ChatRoomCreateResponse(채팅방 정보, 케이스 요약, Deaver 인사 메시지)
      */
     ChatRoomCreateResponse createChatRoom(Long userId, ChatRoomCreateRequest request);
+
+    /**
+     * [채팅방 삭제 서비스]
+     * @author 김민호
+     * @description: 채팅방과 메시지를 삭제합니다. Case 채팅방을 삭제해도 케이스는 유지됩니다.
+     *
+     * @request userId, conversationId
+     * @return void
+     */
+    void deleteChatRoom(Long userId, Long conversationId);
 }

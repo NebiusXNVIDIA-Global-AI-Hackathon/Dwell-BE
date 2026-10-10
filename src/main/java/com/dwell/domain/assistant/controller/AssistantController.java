@@ -12,7 +12,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -56,5 +58,20 @@ public class AssistantController {
             return ResponseEntity.status(HttpStatus.CREATED).body(BaseResponse.success(201, "Chat room created.", response));
         }
         return ResponseEntity.ok(BaseResponse.success(response));
+    }
+
+    // 채팅방 삭제 컨트롤러
+    @Operation(summary = "채팅방 삭제",
+            description = "채팅방과 메시지를 삭제합니다. 케이스 채팅방을 삭제해도 케이스는 유지됩니다.")
+    @DeleteMapping("/conversations/{conversationId}")
+    public ResponseEntity<Void> deleteChatRoom(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable Long conversationId) {
+
+        // 채팅방 삭제 서비스 호출
+        assistantService.deleteChatRoom(userDetails.getUser().getId(), conversationId);
+
+        // 응답 변환 (204 No Content)
+        return ResponseEntity.noContent().build();
     }
 }
