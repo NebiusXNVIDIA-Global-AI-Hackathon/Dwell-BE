@@ -12,6 +12,11 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+  servlet:
+    multipart:
+      max-file-size: 50MB # Default 1MB is too small for video evidence
+      max-request-size: 50MB
+
   jpa:
     hibernate:
       ddl-auto: ${DDL_AUTO:validate} # Flyway owns the schema; Hibernate only validates it against the entities
@@ -30,3 +35,8 @@ cors:
 
 swagger:
   server-url: ${SWAGGER_SERVER_URL:http://localhost:8080}
+
+aws:
+  region: ${AWS_REGION:ap-northeast-2}
+  s3:
+    bucket: ${AWS_S3_BUCKET}
