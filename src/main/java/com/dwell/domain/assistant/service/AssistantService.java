@@ -1,5 +1,7 @@
 package com.dwell.domain.assistant.service;
 
+import com.dwell.domain.assistant.dto.request.ChatRoomCreateRequest;
+import com.dwell.domain.assistant.dto.response.ChatRoomCreateResponse;
 import com.dwell.domain.assistant.dto.response.ConversationListResponse;
 
 public interface AssistantService {
@@ -13,4 +15,15 @@ public interface AssistantService {
      * @return ConversationListResponse(Case 채팅방, Other 채팅방)
      */
     ConversationListResponse getChatRooms(Long userId);
+
+    /**
+     * [채팅방 생성 서비스]
+     * @author 김민호
+     * @description: caseId가 없으면 Other 채팅방, 있으면 Case 채팅방을 생성합니다.
+     *               Case 채팅방은 케이스당 1개라 이미 있으면 기존 채팅방을 반환합니다.
+     *
+     * @request userId, ChatRoomCreateRequest(caseId, intent)
+     * @return ChatRoomCreateResponse(채팅방 정보, 케이스 요약, Deaver 인사 메시지)
+     */
+    ChatRoomCreateResponse createChatRoom(Long userId, ChatRoomCreateRequest request);
 }

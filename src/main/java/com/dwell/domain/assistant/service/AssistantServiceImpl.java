@@ -1,19 +1,30 @@
 package com.dwell.domain.assistant.service;
 
+import com.dwell.domain.assistant.dto.request.ChatRoomCreateRequest;
 import com.dwell.domain.assistant.dto.response.CaseChatResponse;
+import com.dwell.domain.assistant.dto.response.CaseSummaryResponse;
+import com.dwell.domain.assistant.dto.response.ChatRoomCreateResponse;
 import com.dwell.domain.assistant.dto.response.ConversationListResponse;
+import com.dwell.domain.assistant.dto.response.GreetingResponse;
 import com.dwell.domain.assistant.dto.response.OtherChatResponse;
 import com.dwell.domain.assistant.entity.Conversation;
 import com.dwell.domain.assistant.entity.Message;
+import com.dwell.domain.assistant.enums.ConversationIntent;
 import com.dwell.domain.assistant.enums.ConversationType;
 import com.dwell.domain.assistant.enums.MessageRole;
+import com.dwell.domain.assistant.exception.AssistantErrorCode;
 import com.dwell.domain.assistant.repository.ConversationRepository;
 import com.dwell.domain.assistant.repository.MessageRepository;
 import com.dwell.domain.cases.entity.Case;
 import com.dwell.domain.cases.enums.CaseStage;
+import com.dwell.domain.cases.repository.CaseRepository;
+import com.dwell.domain.user.entity.User;
+import com.dwell.domain.user.repository.UserRepository;
+import com.dwell.global.exception.CustomException;
 import com.dwell.global.common.enums.IssueType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +35,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -37,8 +49,19 @@ public class AssistantServiceImpl implements AssistantService {
     private static final String DEFAULT_TITLE = "New Chat"; // Other 채팅방에서 제목 기본값
     private static final int TITLE_MAX_LENGTH = 30; // 제목 글자수 제한
 
+    // Deaver 인사 메시지
+    private static final String OTHER_GREETING = "Hi %s! Ask me anything about your home, your rights, or a message from your landlord. You can write in any language.";
+    private static final List<String> OTHER_QUICK_REPLIES = List.of(
+            "Can my landlord enter without notice?", "Translate a letter from my landlord", "How do I file with 311?");
+    private static final String CASE_GREETING = "I've loaded your %s case (%s). What would you like to do first?";
+    private static final List<String> CASE_QUICK_REPLIES = List.of(
+            "Draft a notice to my landlord", "What are my rights?", "What should I do next?");
+    private static final String REPLY_RECEIVED_GREETING = "Show me the message you received from your landlord. You can paste the text or upload a screenshot.";
+
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
+    private final CaseRepository caseRepository;
+    private final UserRepository userRepository;
 
     // 채팅 목록 조회 서비스
     @Override
@@ -90,6 +113,86 @@ public class AssistantServiceImpl implements AssistantService {
                 .caseChats(caseChats)
                 .otherChats(otherChats)
                 .build();
+    }
+
+
+    // 채팅방 생성 서비스
+    @Override
+    @Transactional
+    public ChatRoomCreateResponse createChatRoom(Long userId, ChatRoomCreateRequest request) {
+
+        Long caseId = request != null ? request.getCaseId() : null;
+        ConversationIntent intent = request != null ? request.getIntent() : null;
+
+        log.info("[AssistantService] 채팅방 생성 서비스 - 시작: userId={}, caseId={}, intent={}", userId, caseId, intent);
+
+        User user = userRepository.getReferenceById(userId);
+
+        // caseId 없으면 Other 채팅방 생성
+        if (caseId == null) {
+            Conversation conversation = conversationRepository.save(Conversation.builder()
+                    .user(user)
+                    .type(ConversationType.OTHER)
+                    .build());
+
+            Message greeting = intent == ConversationIntent.REPLY_RECEIVED
+                    ? saveGreeting(conversation, REPLY_RECEIVED_GREETING, null)
+                    : saveGreeting(conversation, OTHER_GREETING.formatted(user.getNickname()), OTHER_QUICK_REPLIES);
+
+            log.info("[AssistantService] 채팅방 생성 서비스 - 완료: Other 채팅방 생성, conversationId={}", conversation.getId());
+            return toCreateResponse(conversation, greeting, true);
+        }
+
+        // 케이스 조회 (삭제된 케이스는 없는 것으로 처리)
+        Case caseEntity = caseRepository.findById(caseId)
+                .filter(c -> c.getDeletedAt() == null)
+                .orElseThrow(() -> {
+                    log.warn("[AssistantService] 채팅방 생성 서비스 - 케이스를 찾을 수 없습니다: caseId={}", caseId);
+                    return new CustomException(AssistantErrorCode.CASE_NOT_FOUND);
+                });
+
+        // 본인 케이스인지 확인
+        if (!caseEntity.getUser().getId().equals(userId)) {
+            log.warn("[AssistantService] 채팅방 생성 서비스 - 본인 케이스가 아닙니다: userId={}, caseId={}", userId, caseId);
+            throw new CustomException(AssistantErrorCode.CASE_ACCESS_DENIED);
+        }
+
+        // 케이스당 채팅방 1개 -> 이미 있으면 기존 채팅방 반환
+        Optional<Conversation> existing = conversationRepository.findByCaseEntityId(caseId);
+        if (existing.isPresent()) {
+            Conversation conversation = existing.get();
+
+            // intent로 진입하면 새 안내 메시지 추가, 아니면 처음 인사 메시지 반환
+            Message greeting = intent == ConversationIntent.REPLY_RECEIVED
+                    ? saveGreeting(conversation, REPLY_RECEIVED_GREETING, null)
+                    : messageRepository.findFirstByConversationIdAndRoleOrderByIdAsc(
+                            conversation.getId(), MessageRole.ASSISTANT).orElse(null);
+
+            log.info("[AssistantService] 채팅방 생성 서비스 - 완료: 기존 Case 채팅방 반환, conversationId={}", conversation.getId());
+            return toCreateResponse(conversation, greeting, false);
+        }
+
+        // Case 채팅방 생성 (동시 요청으로 unique 제약 위반 시 409)
+        Conversation conversation;
+        try {
+            conversation = conversationRepository.saveAndFlush(Conversation.builder()
+                    .user(user)
+                    .type(ConversationType.CASE)
+                    .caseEntity(caseEntity)
+                    .build());
+        } catch (DataIntegrityViolationException e) {
+            log.warn("[AssistantService] 채팅방 생성 서비스 - 동시 생성 충돌: caseId={}", caseId);
+            throw new CustomException(AssistantErrorCode.CHAT_ROOM_CREATE_CONFLICT);
+        }
+
+        Message greeting = intent == ConversationIntent.REPLY_RECEIVED
+                ? saveGreeting(conversation, REPLY_RECEIVED_GREETING, null)
+                : saveGreeting(conversation,
+                        CASE_GREETING.formatted(issueLabel(caseEntity.getIssueType()), caseEntity.getCaseNumber()),
+                        CASE_QUICK_REPLIES);
+
+        log.info("[AssistantService] 채팅방 생성 서비스 - 완료: Case 채팅방 생성, conversationId={}", conversation.getId());
+        return toCreateResponse(conversation, greeting, true);
     }
 
 
@@ -178,5 +281,51 @@ public class AssistantServiceImpl implements AssistantService {
         return Arrays.stream(issueType.name().split("_"))
                 .map(word -> word.charAt(0) + word.substring(1).toLowerCase())
                 .collect(Collectors.joining(" "));
+    }
+
+    // Deaver 인사 메시지 저장
+    private Message saveGreeting(Conversation conversation, String content, List<String> quickReplies) {
+        return messageRepository.save(Message.builder()
+                .conversation(conversation)
+                .role(MessageRole.ASSISTANT)
+                .content(content)
+                .quickReplies(quickReplies)
+                .build());
+    }
+
+    // 채팅방 생성 결과 -> DTO
+    private ChatRoomCreateResponse toCreateResponse(Conversation conversation, Message greeting, boolean created) {
+        Case caseEntity = conversation.getCaseEntity();
+
+        CaseSummaryResponse caseSummary = caseEntity == null ? null : CaseSummaryResponse.builder()
+                .caseId(caseEntity.getId())
+                .caseNumber(caseEntity.getCaseNumber())
+                .title(caseEntity.getTitle())
+                .location(caseEntity.getLocation())
+                .statusBadge(statusBadge(caseEntity.getStage()))
+                .build();
+
+        GreetingResponse greetingResponse = greeting == null ? null : GreetingResponse.builder()
+                .messageId(greeting.getId())
+                .content(greeting.getContent())
+                .quickReplies(greeting.getQuickReplies())
+                .build();
+
+        return ChatRoomCreateResponse.builder()
+                .conversationId(conversation.getId())
+                .type(conversation.getType())
+                .caseSummary(caseSummary)
+                .greeting(greetingResponse)
+                .created(created)
+                .build();
+    }
+
+    // 케이스 단계 -> 상태 배지 (LOGGED / IN_PROGRESS / RESOLVED)
+    private String statusBadge(CaseStage stage) {
+        return switch (stage) {
+            case LOGGED -> "LOGGED";
+            case RESOLVED -> "RESOLVED";
+            default -> "IN_PROGRESS";
+        };
     }
 }
