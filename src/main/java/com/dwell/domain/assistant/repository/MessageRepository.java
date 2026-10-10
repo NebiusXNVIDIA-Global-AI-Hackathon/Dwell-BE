@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public interface MessageRepository extends JpaRepository<Message, Long> {
 
@@ -33,4 +34,7 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
             """)
     List<Message> findFirstMessages(@Param("conversationIds") Collection<Long> conversationIds,
                                     @Param("role") MessageRole role);
+
+    // 대화의 첫 메시지 (role 기준) - 기존 채팅방 인사 메시지 조회용
+    Optional<Message> findFirstByConversationIdAndRoleOrderByIdAsc(Long conversationId, MessageRole role);
 }
