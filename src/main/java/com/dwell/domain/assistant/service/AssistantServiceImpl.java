@@ -196,6 +196,33 @@ public class AssistantServiceImpl implements AssistantService {
     }
 
 
+    // 채팅방 삭제 서비스
+    @Override
+    @Transactional
+    public void deleteChatRoom(Long userId, Long conversationId) {
+
+        log.info("[AssistantService] 채팅방 삭제 서비스 - 시작: userId={}, conversationId={}", userId, conversationId);
+
+        // 채팅방 조회
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> {
+                    log.warn("[AssistantService] 채팅방 삭제 서비스 - 채팅방을 찾을 수 없습니다: conversationId={}", conversationId);
+                    return new CustomException(AssistantErrorCode.CONVERSATION_NOT_FOUND);
+                });
+
+        // 본인 채팅방인지 확인
+        if (!conversation.getUser().getId().equals(userId)) {
+            log.warn("[AssistantService] 채팅방 삭제 서비스 - 본인 채팅방이 아닙니다: userId={}, conversationId={}", userId, conversationId);
+            throw new CustomException(AssistantErrorCode.CONVERSATION_ACCESS_DENIED);
+        }
+
+        // 채팅방 삭제 (메시지·액션은 DB ON DELETE CASCADE로 함께 삭제, 케이스는 유지)
+        conversationRepository.delete(conversation);
+
+        log.info("[AssistantService] 채팅방 삭제 서비스 - 완료: conversationId={}", conversationId);
+    }
+
+
 
     // ========== 헬퍼 함수 ==========
 
