@@ -2,7 +2,7 @@ name: CD
 
 on:
   push:
-    branches: [dummy]
+    branches: [develop]
 
 env:
   IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/dwell-backend
