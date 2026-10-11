@@ -39,8 +39,8 @@ swagger:
 dwell:
   sla-check:
     enabled: ${SLA_CHECK_ENABLED:true} # Periodic SLA check (manual run via admin API works either way)
-    interval: ${SLA_CHECK_INTERVAL:PT5M}
-    initial-delay: PT1M
+    interval: ${SLA_CHECK_INTERVAL:PT5M} # Time between periodic runs (ISO-8601, e.g. PT30S, PT5M)
+    initial-delay: PT1M # Wait after startup before the first run
   demo:
     time-shift-enabled: ${DEMO_TIME_SHIFT_ENABLED:false} # Turn on only on the demo server
 
