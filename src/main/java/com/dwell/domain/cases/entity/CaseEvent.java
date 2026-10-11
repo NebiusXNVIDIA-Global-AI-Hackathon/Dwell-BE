@@ -16,6 +16,8 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 // Case timeline entry
@@ -104,6 +106,38 @@ public class CaseEvent {
             return fromCaseZone(LocalDate.parse(value).atStartOfDay(), zone);
         } catch (DateTimeParseException ignored) {
             return null;
+        }
+    }
+
+    // 데모 시간 이동: 발생 시각과 payload 시각 값(keys)을 hours만큼 과거로 (형식은 원래대로 유지)
+    public void shiftTimes(Collection<String> keys, long hours) {
+        this.occurredAt = occurredAt.minusHours(hours);
+        if (payload == null) {
+            return;
+        }
+        Map<String, Object> shifted = new LinkedHashMap<>(payload);
+        for (String key : keys) {
+            if (shifted.get(key) != null) {
+                shifted.put(key, shiftTime(String.valueOf(shifted.get(key)), hours));
+            }
+        }
+        this.payload = shifted;
+    }
+
+    // 오프셋 포함 / 오프셋 없음 / 날짜만 (날짜만은 정오 기준으로 옮겨 24시간 단위로 날짜가 바뀜). 형식이 틀리면 그대로
+    private static String shiftTime(String value, long hours) {
+        try {
+            return OffsetDateTime.parse(value).minusHours(hours).toString();
+        } catch (DateTimeParseException ignored) {
+        }
+        try {
+            return LocalDateTime.parse(value).minusHours(hours).toString();
+        } catch (DateTimeParseException ignored) {
+        }
+        try {
+            return LocalDate.parse(value).atTime(12, 0).minusHours(hours).toLocalDate().toString();
+        } catch (DateTimeParseException ignored) {
+            return value;
         }
     }
 
