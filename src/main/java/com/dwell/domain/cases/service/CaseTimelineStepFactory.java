@@ -47,25 +47,11 @@ public class CaseTimelineStepFactory {
     private static final Map<CaseStage, StageStep> STAGE_STEPS = new EnumMap<>(CaseStage.class);
 
     static {
-        EVENT_LABELS.put(CaseEventType.CASE_CREATED, "Case Created");
-        EVENT_LABELS.put(CaseEventType.NOTICE_SENT, "Notified Landlord");
-        EVENT_LABELS.put(CaseEventType.FOLLOW_UP_SENT, "Follow-up Sent");
-        EVENT_LABELS.put(CaseEventType.RESPONSE_OVERDUE, "No Response");
-        EVENT_LABELS.put(CaseEventType.FOLLOW_UP_OVERDUE, "Still no Response");
-        EVENT_LABELS.put(CaseEventType.LANDLORD_REPLIED, "Landlord Replied");
-        EVENT_LABELS.put(CaseEventType.REPAIR_SCHEDULED, "Repair Scheduled");
-        EVENT_LABELS.put(CaseEventType.REPAIR_VISITED, "Visit"); // 실제 라벨은 1st Visit, 2nd Visit ...
-        EVENT_LABELS.put(CaseEventType.LANDLORD_REFUSED, "Landlord Refused");
-        EVENT_LABELS.put(CaseEventType.LANDLORD_BLAME, "Landlord Blame Shifting");
-        EVENT_LABELS.put(CaseEventType.COMPLAINT_311_FILED, "311 Filed");
-        EVENT_LABELS.put(CaseEventType.HPD_INSPECTION_SCHEDULED, "HPD Inspection");
-        EVENT_LABELS.put(CaseEventType.VIOLATION_ISSUED, "Violation Issued");
-        EVENT_LABELS.put(CaseEventType.SELF_REPAIR_STARTED, "Repairing Myself");
-        EVENT_LABELS.put(CaseEventType.CLAIM_SENT, "Claim Sent");
-        EVENT_LABELS.put(CaseEventType.INSURANCE_CLAIM_FILED, "Claim Filed");
-        EVENT_LABELS.put(CaseEventType.REPAIR_VERIFIED, "Repaired");
-        EVENT_LABELS.put(CaseEventType.RESOLVED, "Resolved");
-        EVENT_LABELS.put(CaseEventType.RECURRED, "Recurred");
+        for (CaseEventType type : CaseEventType.values()) {
+            if (type != CaseEventType.EVIDENCE_ADDED && type != CaseEventType.SCHEDULING) {
+                EVENT_LABELS.put(type, type.getLabel());
+            }
+        }
 
         // entryEvent가 null이면 '대기' 단계 → 날짜 없는 현재 스텝을 새로 만듦
         // entryEvent가 있으면 그 이벤트 자체가 현재 스텝이 됨 (날짜 = 이벤트 날짜)
