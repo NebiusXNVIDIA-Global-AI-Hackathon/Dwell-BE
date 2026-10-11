@@ -152,7 +152,8 @@ public class CaseTimelineStepFactory {
         return null;
     }
 
-    private String toOrdinal(int n) {
+    // 1 → "1st", 2 → "2nd" (타임라인 상세 카드 제목에서도 사용)
+    static String toOrdinal(int n) {
         if (n % 100 >= 11 && n % 100 <= 13) {
             return n + "th";
         }

@@ -2,6 +2,7 @@ package com.dwell.domain.cases.controller;
 
 import com.dwell.domain.cases.dto.request.CaseEventCreateRequest;
 import com.dwell.domain.cases.dto.response.CaseOverviewResponse;
+import com.dwell.domain.cases.dto.response.CaseTimelineResponse;
 import com.dwell.domain.cases.service.CaseEventService;
 import com.dwell.domain.cases.service.CaseService;
 import com.dwell.global.common.BaseResponse;
@@ -40,6 +41,19 @@ public class CaseController {
         return ResponseEntity
                 .status(HttpStatus.OK)
                 .body(BaseResponse.success(200, "Case overview retrieved successfully.", response));
+    }
+
+    @Operation(summary = "케이스 타임라인 조회 API", description = "케이스 ID 기반으로, 헤더와 전체 이벤트 카드(제목·설명·관련 증거·경고 표시)를 오래된 순으로 조회하는 API")
+    @GetMapping("/{caseId}/timeline")
+    public ResponseEntity<BaseResponse<CaseTimelineResponse>> getCaseTimeline(
+            @AuthenticationPrincipal CustomUserDetails customUserDetails,
+            @PathVariable Long caseId
+    ) {
+        CaseTimelineResponse response = caseService.getCaseTimeline(caseId, customUserDetails.getUser().getId());
+
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(BaseResponse.success(200, "Case timeline retrieved successfully.", response));
     }
 
     @Operation(summary = "케이스 상태 업데이트 API", description = "케이스에 이벤트(답장·일정·311 신고 등)를 기록하고 stage를 전이한 뒤, 갱신된 케이스 상세를 반환하는 API")
