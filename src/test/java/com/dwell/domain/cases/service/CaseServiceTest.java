@@ -2,7 +2,9 @@ package com.dwell.domain.cases.service;
 
 import com.dwell.domain.building.entity.Building;
 import com.dwell.domain.cases.dto.response.CaseOverviewResponse;
+import com.dwell.domain.cases.dto.response.CaseTimelineResponse;
 import com.dwell.domain.cases.entity.Case;
+import com.dwell.domain.cases.enums.CaseEventType;
 import com.dwell.domain.cases.enums.CaseStage;
 import com.dwell.domain.cases.enums.CaseStatus;
 import com.dwell.domain.cases.enums.StatusBadge;
@@ -23,6 +25,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -54,7 +57,7 @@ class CaseServiceTest {
     @BeforeEach
     void setUp() {
         caseService = new CaseService(caseRepository, caseChecklistItemRepository, caseEventRepository, noticeRepository,
-                evidenceRepository, fileRepository, new CaseBannerFactory(), new CaseTimelineStepFactory());
+                evidenceRepository, fileRepository, new CaseBannerFactory(), new CaseTimelineStepFactory(), new CaseTimelineEventFactory());
     }
 
     @Test
@@ -98,6 +101,35 @@ class CaseServiceTest {
         assertThat(response.getTimelineSteps()).isNotEmpty();
         assertThat(response.getEvidence().getCount()).isZero();
         assertThat(response.getChecklist().getItems()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("타임라인 조회: 헤더(번호·주소·배지) + 이벤트 카드")
+    void timeline() {
+        Case caseEntity = caseOf(owner(1L), CaseStage.AWAITING_RESPONSE);
+        given(caseRepository.findByIdAndDeletedAtIsNull(6L)).willReturn(Optional.of(caseEntity));
+        given(caseEventRepository.findAllByCaseEntityOrderByOccurredAtAscIdAsc(any())).willReturn(List.of(
+                CaseBannerFactoryTest.event(caseEntity, CaseEventType.CASE_CREATED, LocalDateTime.of(2026, 9, 28, 20, 12), null)));
+        given(evidenceRepository.findAllByCaseEntityAndDeletedAtIsNullOrderByCreatedAtAscIdAsc(any())).willReturn(List.of());
+        given(noticeRepository.findAllByCaseEntityAndSentAtIsNotNullOrderBySentAtAsc(any())).willReturn(List.of());
+
+        CaseTimelineResponse response = caseService.getCaseTimeline(6L, 1L);
+
+        assertThat(response.getHeader().getCaseNumber()).isEqualTo("C-006");
+        assertThat(response.getHeader().getAddress()).isEqualTo("123 Main St, Apt 4B");
+        assertThat(response.getHeader().getStatusBadge()).isEqualTo(StatusBadge.IN_PROGRESS);
+        assertThat(response.getEvents()).extracting(event -> event.getTitle().en()).containsExactly("Case Created");
+    }
+
+    @Test
+    @DisplayName("타임라인 조회: 다른 사람 케이스면 NOT_CASE_OWNER")
+    void timelineNotOwner() {
+        Case caseEntity = caseOf(owner(1L), CaseStage.LOGGED);
+        given(caseRepository.findByIdAndDeletedAtIsNull(6L)).willReturn(Optional.of(caseEntity));
+
+        assertThatThrownBy(() -> caseService.getCaseTimeline(6L, 2L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(CaseErrorCode.NOT_CASE_OWNER);
     }
 
     // ========== 테스트 픽스처 ==========

@@ -2,7 +2,9 @@ package com.dwell.domain.cases.service;
 
 import com.dwell.domain.building.entity.Building;
 import com.dwell.domain.cases.dto.response.CaseEvidenceResponse;
+import com.dwell.domain.cases.dto.response.CaseHeaderResponse;
 import com.dwell.domain.cases.dto.response.CaseOverviewResponse;
+import com.dwell.domain.cases.dto.response.CaseTimelineResponse;
 import com.dwell.domain.cases.dto.response.ChecklistItemResponse;
 import com.dwell.domain.cases.dto.response.ChecklistResponse;
 import com.dwell.domain.cases.dto.response.EvidenceItemResponse;
@@ -46,6 +48,7 @@ public class CaseService {
     private final FileRepository fileRepository;
     private final CaseBannerFactory caseBannerFactory;
     private final CaseTimelineStepFactory caseTimelineStepFactory;
+    private final CaseTimelineEventFactory caseTimelineEventFactory;
 
     public CaseOverviewResponse getCaseOverview(Long caseId, Long userId) {
 
@@ -85,6 +88,39 @@ public class CaseService {
                 .build();
 
         log.info("[CaseService] 케이스 상세 조회 - 종료: caseId={}, stage={}", caseId, caseEntity.getStage());
+
+        // DTO 반환
+        return response;
+    }
+
+    public CaseTimelineResponse getCaseTimeline(Long caseId, Long userId) {
+
+        log.info("[CaseService] 케이스 타임라인 조회 - 시작: caseId={}", caseId);
+
+        // 본인 케이스 조회 (삭제된 케이스 제외)
+        Case caseEntity = findOwnedCase(caseId, userId);
+
+        // 타임라인 이벤트 + 카드 설명에 쓰는 증거(삭제 제외)·파일·발송된 통지
+        List<CaseEvent> events = caseEventRepository.findAllByCaseEntityOrderByOccurredAtAscIdAsc(caseEntity);
+        List<Evidence> evidences = evidenceRepository.findAllByCaseEntityAndDeletedAtIsNullOrderByCreatedAtAscIdAsc(caseEntity);
+        List<File> files = evidences.isEmpty() ? List.of() : fileRepository.findAllByEvidenceInOrderByIdAsc(evidences);
+        List<Notice> sentNotices = noticeRepository.findAllByCaseEntityAndSentAtIsNotNullOrderBySentAtAsc(caseEntity);
+
+        // DTO 변환
+        CaseTimelineResponse response = CaseTimelineResponse.builder()
+                .header(CaseHeaderResponse.builder()
+                        .caseId(caseEntity.getId())
+                        .caseNumber(caseEntity.getCaseNumber())
+                        .title(caseEntity.getTitle())
+                        .address(toAddress(caseEntity))
+                        .statusBadge(caseEntity.getStage().toStatusBadge())
+                        .severity(caseEntity.getSeverity())
+                        .createdAt(caseEntity.getCreatedAt())
+                        .build())
+                .events(caseTimelineEventFactory.create(events, evidences, files, sentNotices))
+                .build();
+
+        log.info("[CaseService] 케이스 타임라인 조회 - 종료: caseId={}, events={}", caseId, response.getEvents().size());
 
         // DTO 반환
         return response;
