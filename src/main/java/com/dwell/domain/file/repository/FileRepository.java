@@ -1,7 +1,13 @@
 package com.dwell.domain.file.repository;
 
+import com.dwell.domain.evidence.entity.Evidence;
 import com.dwell.domain.file.entity.File;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
+
 public interface FileRepository extends JpaRepository<File, Long> {
+
+    // 증거 여러 건의 파일을 한 번에 (썸네일·개수 계산용)
+    List<File> findAllByEvidenceInOrderByIdAsc(List<Evidence> evidences);
 }
