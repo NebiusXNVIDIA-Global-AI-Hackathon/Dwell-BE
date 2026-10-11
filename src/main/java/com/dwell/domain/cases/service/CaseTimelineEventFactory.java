@@ -48,7 +48,7 @@ public class CaseTimelineEventFactory {
 
     public List<CaseTimelineEventResponse> create(List<CaseEvent> events, List<Evidence> evidences, List<File> files, List<Notice> notices) {
 
-        // 삭제되지 않은 증거, 통지
+        // 증거·통지 조회용 맵 (CaseService가 삭제 안 된 증거, 발송된 통지만 넘김)
         Map<Long, Evidence> evidenceById = new HashMap<>();
         for (Evidence evidence : evidences) {
             evidenceById.put(evidence.getId(), evidence);
