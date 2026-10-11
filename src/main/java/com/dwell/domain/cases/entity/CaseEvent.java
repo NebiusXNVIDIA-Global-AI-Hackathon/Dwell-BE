@@ -84,7 +84,11 @@ public class CaseEvent {
     // payload 시각 값을 저장 시간대(zone)의 LocalDateTime으로 (오프셋 포함 ISO, 오프셋 없는 ISO, 날짜만 모두 허용)
     // 오프셋이 없으면 뉴욕 현지 시각, 날짜만 있으면 뉴욕 자정으로 봄
     public LocalDateTime getPayloadDateTime(String key, ZoneId zone) {
-        String value = getPayloadString(key);
+        return parseDateTime(getPayloadString(key), zone);
+    }
+
+    // 시각 문자열 → 저장 시간대(zone)의 LocalDateTime (형식이 틀리면 null). 요청 검증에도 사용
+    public static LocalDateTime parseDateTime(String value, ZoneId zone) {
         if (value == null || value.isBlank()) {
             return null;
         }
@@ -104,7 +108,7 @@ public class CaseEvent {
     }
 
     // 뉴욕 현지 시각 → 저장 시간대
-    private LocalDateTime fromCaseZone(LocalDateTime caseLocal, ZoneId zone) {
+    private static LocalDateTime fromCaseZone(LocalDateTime caseLocal, ZoneId zone) {
         return caseLocal.atZone(CASE_ZONE).withZoneSameInstant(zone).toLocalDateTime();
     }
 }

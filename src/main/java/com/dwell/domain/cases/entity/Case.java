@@ -163,4 +163,9 @@ public class Case extends BaseTimeEntity {
         this.firstObservedAt = firstObservedAt;
         this.analysisStatus = analysisStatus;
     }
+
+    // stage 전이 (허용 여부는 CaseEventRule에서 확인)
+    public void changeStage(CaseStage stage) {
+        this.stage = stage;
+    }
 }

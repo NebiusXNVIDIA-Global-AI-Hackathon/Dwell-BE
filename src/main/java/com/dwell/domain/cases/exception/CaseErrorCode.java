@@ -10,7 +10,11 @@ import org.springframework.http.HttpStatus;
 public enum CaseErrorCode implements BaseErrorCode {
 
     CASE_NOT_FOUND("C001", "Case not found.", HttpStatus.NOT_FOUND),
-    NOT_CASE_OWNER("C002", "You can only access your own cases.", HttpStatus.FORBIDDEN);
+    NOT_CASE_OWNER("C002", "You can only access your own cases.", HttpStatus.FORBIDDEN),
+    INVALID_TRANSITION("C003", "This event is not allowed in the current case stage.", HttpStatus.CONFLICT),
+    INVALID_PAYLOAD("C004", "Required payload is missing or has an invalid format.", HttpStatus.BAD_REQUEST),
+    EVENT_TYPE_NOT_ALLOWED("C005", "This event type cannot be recorded through this API.", HttpStatus.BAD_REQUEST),
+    INVALID_OCCURRED_AT("C006", "occurredAt must be a valid ISO-8601 time, not in the future, and not earlier than the last case event.", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

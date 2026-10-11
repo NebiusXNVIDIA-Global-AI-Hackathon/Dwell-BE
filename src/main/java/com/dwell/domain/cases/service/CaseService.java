@@ -51,17 +51,8 @@ public class CaseService {
 
         log.info("[CaseService] 케이스 상세 조회 - 시작: caseId={}", caseId);
 
-        // DB에서 케이스 조회 (삭제된 케이스 제외)
-        Case caseEntity = caseRepository.findByIdAndDeletedAtIsNull(caseId).orElseThrow(() -> {
-            log.warn("[CaseService] 케이스 조회 실패 - 존재하지 않는 케이스 caseId: {}", caseId);
-            return new CustomException(CaseErrorCode.CASE_NOT_FOUND);
-        });
-
-        // 본인의 케이스가 아니면 조회 X
-        if (!caseEntity.getUser().getId().equals(userId)) {
-            log.warn("[CaseService] 케이스 조회 실패 - 타인 케이스 조회 시도 caseId: {}, userId: {}", caseId, userId);
-            throw new CustomException(CaseErrorCode.NOT_CASE_OWNER);
-        }
+        // 본인 케이스 조회 (삭제된 케이스 제외)
+        Case caseEntity = findOwnedCase(caseId, userId);
 
         // 배너·진행 스텝 계산에 필요한 타임라인 이벤트, 발송된 통지
         List<CaseEvent> events = caseEventRepository.findAllByCaseEntityOrderByOccurredAtAscIdAsc(caseEntity);
@@ -97,6 +88,24 @@ public class CaseService {
 
         // DTO 반환
         return response;
+    }
+
+    // 본인 케이스 조회 (삭제된 케이스 제외) - 케이스 이벤트 기록에서도 사용
+    public Case findOwnedCase(Long caseId, Long userId) {
+
+        // DB에서 케이스 조회 (삭제된 케이스 제외)
+        Case caseEntity = caseRepository.findByIdAndDeletedAtIsNull(caseId).orElseThrow(() -> {
+            log.warn("[CaseService] 케이스 조회 실패 - 존재하지 않는 케이스 caseId: {}", caseId);
+            return new CustomException(CaseErrorCode.CASE_NOT_FOUND);
+        });
+
+        // 본인의 케이스가 아니면 X
+        if (!caseEntity.getUser().getId().equals(userId)) {
+            log.warn("[CaseService] 케이스 조회 실패 - 타인 케이스 접근 시도 caseId: {}, userId: {}", caseId, userId);
+            throw new CustomException(CaseErrorCode.NOT_CASE_OWNER);
+        }
+
+        return caseEntity;
     }
 
     // ========== 헬퍼 함수 ==========
