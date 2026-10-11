@@ -6,6 +6,7 @@ public enum CaseEventType {
     NOTICE_SENT,
     FOLLOW_UP_SENT,
     RESPONSE_OVERDUE,
+    FOLLOW_UP_OVERDUE, // 재통지 기한 경과 (스케줄러 기록)
     LANDLORD_REPLIED,
     SCHEDULING,
     REPAIR_SCHEDULED,
