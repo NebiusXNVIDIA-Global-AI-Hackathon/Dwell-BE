@@ -36,6 +36,14 @@ cors:
 swagger:
   server-url: ${SWAGGER_SERVER_URL:http://localhost:8080}
 
+dwell:
+  sla-check:
+    enabled: ${SLA_CHECK_ENABLED:true} # Periodic SLA check (manual run via admin API works either way)
+    interval: ${SLA_CHECK_INTERVAL:PT5M}
+    initial-delay: PT1M
+  demo:
+    time-shift-enabled: ${DEMO_TIME_SHIFT_ENABLED:false} # Turn on only on the demo server
+
 aws:
   region: ${AWS_REGION:ap-northeast-2}
   s3:
