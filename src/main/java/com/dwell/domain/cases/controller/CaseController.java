@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -100,5 +101,19 @@ public class CaseController {
 
         // 응답 반환
         return ResponseEntity.status(HttpStatus.OK).body(BaseResponse.success(200, "Evidence added successfully.", response));
+    }
+
+    // 케이스 삭제
+    @Operation(summary = "케이스 삭제 API", description = "케이스와 연결된 증거,파일,타임라인,체크리스트,Notice,검증,케이스 채팅을 영구 삭제하는 API(S3 원본 파일도 삭제)")
+    @DeleteMapping("/{caseId}")
+    public ResponseEntity<Void> deleteCase(
+            @AuthenticationPrincipal CustomUserDetails customUserDetails,
+            @PathVariable Long caseId) {
+
+        // service 호출
+        caseService.deleteCase(caseId, customUserDetails.getUser().getId());
+
+        // 응답 반환
+        return ResponseEntity.noContent().build();
     }
 }

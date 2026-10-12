@@ -22,6 +22,7 @@ import com.dwell.domain.file.entity.File;
 import com.dwell.domain.file.enums.FilePurpose;
 import com.dwell.domain.file.exception.FileErrorCode;
 import com.dwell.domain.file.repository.FileRepository;
+import com.dwell.domain.file.service.FileService;
 import com.dwell.domain.notice.repository.NoticeRepository;
 import com.dwell.domain.user.entity.User;
 import com.dwell.domain.user.repository.UserRepository;
@@ -69,6 +70,8 @@ class CaseServiceTest {
     private UserRepository userRepository;
     @Mock
     private UserPlaceRepository userPlaceRepository;
+    @Mock
+    private FileService fileService;
 
     private CaseService caseService;
 
@@ -76,7 +79,7 @@ class CaseServiceTest {
     void setUp() {
         caseService = new CaseService(caseRepository, caseChecklistItemRepository, caseEventRepository, noticeRepository,
                 evidenceRepository, fileRepository, new CaseBannerFactory(), new CaseTimelineStepFactory(), new CaseTimelineEventFactory(),
-                userRepository, userPlaceRepository);
+                userRepository, userPlaceRepository, fileService);
     }
 
     @Test
@@ -156,7 +159,7 @@ class CaseServiceTest {
     void createCase() {
         File photo = fileOf(1L, MediaType.PHOTO);
         File video = fileOf(1L, MediaType.VIDEO);
-        stubCaseCreation(List.of(photo, video), 5L);
+        stubCaseCreation(List.of(photo, video), "C-005");
 
         // 집 정보
         Building building = mock(Building.class);
@@ -204,7 +207,7 @@ class CaseServiceTest {
     @Test
     @DisplayName("케이스 생성: Entire Unit은 부위 없이 제목 생성, 집 정보가 없으면 주소 비움")
     void createCaseEntireUnit() {
-        stubCaseCreation(List.of(fileOf(1L, MediaType.PHOTO)), 0L);
+        stubCaseCreation(List.of(fileOf(1L, MediaType.PHOTO)), null);
 
         CaseCreateRequest request = createRequest(IssueCategory.HEAT_HOT_WATER, "NO_HEAT", Location.ENTIRE_UNIT, null);
 
@@ -223,7 +226,7 @@ class CaseServiceTest {
     @Test
     @DisplayName("케이스 생성: Other를 고르면 직접 입력한 값으로 제목 생성")
     void createCaseWithOtherInputs() {
-        stubCaseCreation(List.of(fileOf(1L, MediaType.PHOTO)), 0L);
+        stubCaseCreation(List.of(fileOf(1L, MediaType.PHOTO)), null);
 
         CaseCreateRequest request = createRequest(IssueCategory.WATER_FLOODING, "OTHER", Location.OTHER, AffectedArea.OTHER);
         ReflectionTestUtils.setField(request, "issueDetailOther", "Rainwater coming in");
@@ -235,6 +238,19 @@ class CaseServiceTest {
         ArgumentCaptor<Case> caseCaptor = ArgumentCaptor.forClass(Case.class);
         verify(caseRepository).save(caseCaptor.capture());
         assertThat(caseCaptor.getValue().getTitle()).isEqualTo("Rainwater coming in in Garage · Behind the door");
+    }
+
+    @Test
+    @DisplayName("케이스 생성: 중간 케이스가 지워져도 가장 최근 번호 다음으로 생성")
+    void createCaseAfterDeletion() {
+        // C-001, C-003이 남아 있음 (C-002 삭제) → 가장 최근은 C-003
+        stubCaseCreation(List.of(fileOf(1L, MediaType.PHOTO)), "C-003");
+
+        CaseCreateRequest request = createRequest(IssueCategory.WATER_FLOODING, "WATER_LEAK", Location.BATHROOM, AffectedArea.CEILING);
+
+        CaseCreateResponse response = caseService.createCase(1L, request);
+
+        assertThat(response.getCaseNumber()).isEqualTo("C-004");
     }
 
     @Test
@@ -362,7 +378,9 @@ class CaseServiceTest {
         given(fileRepository.findAllById(any())).willReturn(List.of(photo, secondPhoto));
 
         // 증거 저장 시 ID 부여
-        given(evidenceRepository.countByUserId(1L)).willReturn(3L);
+        // 가장 최근 증거가 EV-003 → 다음은 EV-004
+        given(evidenceRepository.findTopByUserIdOrderByIdDesc(1L))
+                .willReturn(Optional.of(Evidence.builder().evidenceCode("EV-003").build()));
         given(evidenceRepository.save(any(Evidence.class))).willAnswer(invocation -> {
             Evidence saved = invocation.getArgument(0);
             ReflectionTestUtils.setField(saved, "id", 10L);
@@ -408,7 +426,7 @@ class CaseServiceTest {
         given(caseRepository.findByIdAndDeletedAtIsNull(6L)).willReturn(Optional.of(caseEntity));
         File photo = fileOf(1L, MediaType.PHOTO);
         given(fileRepository.findAllById(any())).willReturn(List.of(photo));
-        given(evidenceRepository.countByUserId(1L)).willReturn(0L);
+        given(evidenceRepository.findTopByUserIdOrderByIdDesc(1L)).willReturn(Optional.empty());
         given(evidenceRepository.save(any(Evidence.class))).willAnswer(invocation -> invocation.getArgument(0));
         stubCaseOverview();
 
@@ -458,6 +476,62 @@ class CaseServiceTest {
         verify(evidenceRepository, never()).save(any());
     }
 
+    @Test
+    @DisplayName("케이스 삭제: 증거에 연결된 파일을 지운 뒤 케이스 삭제")
+    void deleteCase() {
+        Case caseEntity = caseOf(owner(1L), CaseStage.AWAITING_RESPONSE);
+        given(caseRepository.findByIdAndDeletedAtIsNull(6L)).willReturn(Optional.of(caseEntity));
+
+        // 케이스의 증거 파일 2개
+        File photo = fileOf(1L, MediaType.PHOTO);
+        File video = fileOf(1L, MediaType.VIDEO);
+        given(fileRepository.findAllByEvidenceCaseEntity(caseEntity)).willReturn(List.of(photo, video));
+
+        caseService.deleteCase(6L, 1L);
+
+        // 파일을 먼저 지우고, 그다음 케이스 삭제
+        org.mockito.InOrder inOrder = inOrder(fileService, caseRepository);
+        inOrder.verify(fileService).deleteFiles(List.of(photo, video));
+        inOrder.verify(caseRepository).delete(caseEntity);
+    }
+
+    @Test
+    @DisplayName("케이스 삭제: 증거가 없으면 빈 파일 목록으로 삭제")
+    void deleteCaseWithoutEvidence() {
+        Case caseEntity = caseOf(owner(1L), CaseStage.LOGGED);
+        given(caseRepository.findByIdAndDeletedAtIsNull(6L)).willReturn(Optional.of(caseEntity));
+        given(fileRepository.findAllByEvidenceCaseEntity(caseEntity)).willReturn(List.of());
+
+        caseService.deleteCase(6L, 1L);
+
+        verify(fileService).deleteFiles(List.of());
+        verify(caseRepository).delete(caseEntity);
+    }
+
+    @Test
+    @DisplayName("케이스 삭제: 없는 케이스면 CASE_NOT_FOUND")
+    void deleteCaseNotFound() {
+        given(caseRepository.findByIdAndDeletedAtIsNull(6L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> caseService.deleteCase(6L, 1L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(CaseErrorCode.CASE_NOT_FOUND);
+        verify(caseRepository, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("케이스 삭제: 다른 사람 케이스면 NOT_CASE_OWNER")
+    void deleteCaseNotOwner() {
+        Case caseEntity = caseOf(owner(1L), CaseStage.LOGGED);
+        given(caseRepository.findByIdAndDeletedAtIsNull(6L)).willReturn(Optional.of(caseEntity));
+
+        assertThatThrownBy(() -> caseService.deleteCase(6L, 2L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(CaseErrorCode.NOT_CASE_OWNER);
+        verify(caseRepository, never()).delete(any());
+        verify(fileService, never()).deleteFiles(any());
+    }
+
     // ========== 테스트 픽스처 ==========
 
     private User owner(Long id) {
@@ -505,13 +579,18 @@ class CaseServiceTest {
         return file;
     }
 
-    // 케이스 생성 성공에 필요한 저장소 동작
-    private void stubCaseCreation(List<File> files, long caseCount) {
+    // 케이스 생성 성공에 필요한 저장소 동작 (가장 최근 케이스 번호가 없으면 첫 케이스)
+    private void stubCaseCreation(List<File> files, String latestCaseNumber) {
+        Optional<Case> latestCase = Optional.empty();
+        if (latestCaseNumber != null) {
+            latestCase = Optional.of(Case.builder().caseNumber(latestCaseNumber).build());
+        }
+
         given(fileRepository.findAllById(any())).willReturn(files);
         given(userRepository.getReferenceById(1L)).willReturn(mock(User.class));
-        given(caseRepository.countByUserId(1L)).willReturn(caseCount);
+        given(caseRepository.findTopByUserIdOrderByIdDesc(1L)).willReturn(latestCase);
         given(caseRepository.save(any(Case.class))).willAnswer(invocation -> invocation.getArgument(0));
-        given(evidenceRepository.countByUserId(1L)).willReturn(0L);
+        given(evidenceRepository.findTopByUserIdOrderByIdDesc(1L)).willReturn(Optional.empty());
         given(evidenceRepository.save(any(Evidence.class))).willAnswer(invocation -> invocation.getArgument(0));
     }
 
