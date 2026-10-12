@@ -175,4 +175,9 @@ public class Case extends BaseTimeEntity {
     public void changeStage(CaseStage stage) {
         this.stage = stage;
     }
+
+    // 증거가 바뀌어 AI 분석을 다시 해야 할 때
+    public void markAnalysisPending() {
+        this.analysisStatus = AnalysisStatus.PENDING;
+    }
 }

@@ -2,6 +2,7 @@ package com.dwell.domain.cases.controller;
 
 import com.dwell.domain.cases.dto.request.CaseCreateRequest;
 import com.dwell.domain.cases.dto.request.CaseEventCreateRequest;
+import com.dwell.domain.cases.dto.request.CaseEvidenceAddRequest;
 import com.dwell.domain.cases.dto.response.CaseCreateResponse;
 import com.dwell.domain.cases.dto.response.CaseOverviewResponse;
 import com.dwell.domain.cases.dto.response.CaseTimelineResponse;
@@ -84,5 +85,20 @@ public class CaseController {
 
         // 응답 반환 (AI 분석은 비동기라 202)
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(BaseResponse.success(202, "Case created. AI analysis has started.", response));
+    }
+
+    // 케이스 증거 추가
+    @Operation(summary = "케이스 증거 추가 API", description = "POST /files로 올린 파일을 기존 케이스의 증거 1건으로 추가하고, 갱신된 케이스 상세를 반환하는 API. 추가 후 AI 분석 상태는 PENDING")
+    @PostMapping("/{caseId}/evidence")
+    public ResponseEntity<BaseResponse<CaseOverviewResponse>> addEvidence(
+            @AuthenticationPrincipal CustomUserDetails customUserDetails,
+            @PathVariable Long caseId,
+            @Valid @RequestBody CaseEvidenceAddRequest request) {
+
+        // service 호출
+        CaseOverviewResponse response = caseService.addEvidence(caseId, customUserDetails.getUser().getId(), request);
+
+        // 응답 반환
+        return ResponseEntity.status(HttpStatus.OK).body(BaseResponse.success(200, "Evidence added successfully.", response));
     }
 }
