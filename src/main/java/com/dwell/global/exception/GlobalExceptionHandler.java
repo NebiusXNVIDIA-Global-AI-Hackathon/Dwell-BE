@@ -13,6 +13,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.stream.Collectors;
@@ -78,6 +79,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<BaseResponse<?>> handleInvalidParameterException(Exception ex) {
         log.warn("요청 파라미터 오류: {}", ex.getMessage());
         return toResponse(GlobalErrorCode.INVALID_INPUT_VALUE);
+    }
+
+    // Upload size exceeded (413) - thrown before reaching the controller when a file exceeds max-file-size (50MB)
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<BaseResponse<?>> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex) {
+        log.warn("File upload failed: file too large: {}", ex.getMessage());
+        return toResponse(GlobalErrorCode.FILE_TOO_LARGE);
     }
 
     // 6. Unknown URL handler (404 Not Found)

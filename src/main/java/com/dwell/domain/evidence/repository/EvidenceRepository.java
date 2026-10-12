@@ -9,4 +9,7 @@ import java.util.List;
 public interface EvidenceRepository extends JpaRepository<Evidence, Long> {
 
     List<Evidence> findAllByCaseEntityAndDeletedAtIsNullOrderByCreatedAtAscIdAsc(Case caseEntity);
+
+    // 사용자의 전체 증거 수 (증거 번호 생성용)
+    long countByUserId(Long userId);
 }

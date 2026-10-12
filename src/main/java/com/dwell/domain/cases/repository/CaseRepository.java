@@ -17,4 +17,7 @@ public interface CaseRepository extends JpaRepository<Case, Long> {
 
     // SLA 체크 대상 (기한이 걸린 stage의 삭제되지 않은 케이스)
     List<Case> findAllByStageInAndDeletedAtIsNull(Collection<CaseStage> stages);
+
+    // 사용자의 전체 케이스 수 (삭제된 케이스 포함, 케이스 번호 생성용)
+    long countByUserId(Long userId);
 }

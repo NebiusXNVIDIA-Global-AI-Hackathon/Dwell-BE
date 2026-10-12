@@ -15,7 +15,8 @@ public enum GlobalErrorCode implements BaseErrorCode {
     METHOD_NOT_ALLOWED("G004", "HTTP method not supported.", HttpStatus.METHOD_NOT_ALLOWED),
     INVALID_JSON_FORMAT("G005", "Malformed JSON request body.", HttpStatus.BAD_REQUEST),
     UNAUTHORIZED("G006", "Authentication is required.", HttpStatus.UNAUTHORIZED),
-    FORBIDDEN("G007", "Access denied.", HttpStatus.FORBIDDEN);
+    FORBIDDEN("G007", "Access denied.", HttpStatus.FORBIDDEN),
+    FILE_TOO_LARGE("G008", "This file is too large. Try lowering the photo quality or shortening the video or recording.", HttpStatus.CONTENT_TOO_LARGE);
 
     private final String code;
     private final String message;

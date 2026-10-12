@@ -1,6 +1,8 @@
 package com.dwell.domain.cases.controller;
 
+import com.dwell.domain.cases.dto.request.CaseCreateRequest;
 import com.dwell.domain.cases.dto.request.CaseEventCreateRequest;
+import com.dwell.domain.cases.dto.response.CaseCreateResponse;
 import com.dwell.domain.cases.dto.response.CaseOverviewResponse;
 import com.dwell.domain.cases.dto.response.CaseTimelineResponse;
 import com.dwell.domain.cases.service.CaseEventService;
@@ -68,5 +70,19 @@ public class CaseController {
         return ResponseEntity
                 .status(HttpStatus.OK)
                 .body(BaseResponse.success(200, "Case event recorded successfully.", response));
+    }
+
+    // 케이스 생성
+    @Operation(summary = "케이스 생성 API", description = "New Case 선택값과 POST /files로 올린 파일로 케이스를 생성하는 API. 파일은 증거 1건으로 묶이고, 생성 직후 stage는 LOGGED, AI 분석 상태는 PENDING")
+    @PostMapping
+    public ResponseEntity<BaseResponse<CaseCreateResponse>> createCase(
+            @AuthenticationPrincipal CustomUserDetails customUserDetails,
+            @Valid @RequestBody CaseCreateRequest request) {
+
+        // service 호출
+        CaseCreateResponse response = caseService.createCase(customUserDetails.getUser().getId(), request);
+
+        // 응답 반환 (AI 분석은 비동기라 202)
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(BaseResponse.success(202, "Case created. AI analysis has started.", response));
     }
 }

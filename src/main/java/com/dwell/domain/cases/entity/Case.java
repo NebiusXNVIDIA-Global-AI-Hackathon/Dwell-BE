@@ -83,12 +83,18 @@ public class Case extends BaseTimeEntity {
     @Column(length = 20)
     private String subLocation;
 
+    // Entire Unit이면 비어 있음
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(length = 30)
     private AffectedArea affectedArea;
 
+    // 부위에서 Other를 고르면 직접 입력한 값
+    @Column(length = 50)
+    private String affectedAreaOther;
+
+    // AI 분석 후에 정해짐 (생성 직후에는 비어 있음)
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
+    @Column(length = 10)
     private Severity severity;
 
     @Enumerated(EnumType.STRING)
@@ -138,8 +144,8 @@ public class Case extends BaseTimeEntity {
     @Builder
     public Case(String caseNumber, User user, Building building, String unit, String title,
                 IssueCategory issueCategory, String issueDetail, String issueDetailOther, IssueType issueType,
-                Location location, String locationOther, AffectedArea affectedArea, Severity severity,
-                CaseStage stage, Visibility visibility, String description, boolean safetyAcknowledged,
+                Location location, String locationOther, AffectedArea affectedArea, String affectedAreaOther,
+                Severity severity, CaseStage stage, Visibility visibility, String description, boolean safetyAcknowledged,
                 LocalDate firstObservedAt, AnalysisStatus analysisStatus) {
         this.caseNumber = caseNumber;
         this.user = user;
@@ -153,6 +159,7 @@ public class Case extends BaseTimeEntity {
         this.location = location;
         this.locationOther = locationOther;
         this.affectedArea = affectedArea;
+        this.affectedAreaOther = affectedAreaOther;
         this.severity = severity;
         this.stage = stage;
         if (visibility != null) {
