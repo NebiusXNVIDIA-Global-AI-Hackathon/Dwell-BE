@@ -4,6 +4,7 @@ import com.dwell.domain.building.entity.Building;
 import com.dwell.domain.building.entity.UserPlace;
 import com.dwell.domain.building.repository.UserPlaceRepository;
 import com.dwell.domain.cases.dto.request.CaseCreateRequest;
+import com.dwell.domain.cases.dto.request.CaseEvidenceAddRequest;
 import com.dwell.domain.cases.dto.response.CaseCreateResponse;
 import com.dwell.domain.cases.dto.response.CaseOverviewResponse;
 import com.dwell.domain.cases.dto.response.CaseTimelineResponse;
@@ -15,6 +16,7 @@ import com.dwell.domain.cases.repository.CaseChecklistItemRepository;
 import com.dwell.domain.cases.repository.CaseEventRepository;
 import com.dwell.domain.cases.repository.CaseRepository;
 import com.dwell.domain.evidence.entity.Evidence;
+import com.dwell.domain.evidence.enums.EvidencePhase;
 import com.dwell.domain.evidence.repository.EvidenceRepository;
 import com.dwell.domain.file.entity.File;
 import com.dwell.domain.file.enums.FilePurpose;
@@ -348,6 +350,114 @@ class CaseServiceTest {
         verify(caseRepository, never()).save(any());
     }
 
+    @Test
+    @DisplayName("증거 추가: 파일을 증거 1건으로 묶고 Evidence Added 이벤트 기록, 분석 상태 PENDING, 갱신된 상세 반환")
+    void addEvidence() {
+        Case caseEntity = caseOf(owner(1L), CaseStage.AWAITING_RESPONSE);
+        given(caseRepository.findByIdAndDeletedAtIsNull(6L)).willReturn(Optional.of(caseEntity));
+
+        // 파일 2개
+        File photo = fileOf(1L, MediaType.PHOTO);
+        File secondPhoto = fileOf(1L, MediaType.PHOTO);
+        given(fileRepository.findAllById(any())).willReturn(List.of(photo, secondPhoto));
+
+        // 증거 저장 시 ID 부여
+        given(evidenceRepository.countByUserId(1L)).willReturn(3L);
+        given(evidenceRepository.save(any(Evidence.class))).willAnswer(invocation -> {
+            Evidence saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", 10L);
+            return saved;
+        });
+
+        // 갱신된 상세 조회용
+        stubCaseOverview();
+
+        CaseEvidenceAddRequest request = evidenceAddRequest(List.of(110L, 111L), EvidencePhase.PROGRESS, "Ceiling patched but still damp");
+
+        CaseOverviewResponse response = caseService.addEvidence(6L, 1L, request);
+
+        // 갱신된 상세
+        assertThat(response.getCaseId()).isEqualTo(6L);
+
+        // 증거 1건 (사진만이라 PHOTO), 단계·메모 저장, 파일 2개 연결
+        ArgumentCaptor<Evidence> evidenceCaptor = ArgumentCaptor.forClass(Evidence.class);
+        verify(evidenceRepository).save(evidenceCaptor.capture());
+        Evidence savedEvidence = evidenceCaptor.getValue();
+        assertThat(savedEvidence.getEvidenceCode()).isEqualTo("EV-004");
+        assertThat(savedEvidence.getMediaType()).isEqualTo(MediaType.PHOTO);
+        assertThat(savedEvidence.getPhase()).isEqualTo(EvidencePhase.PROGRESS);
+        assertThat(savedEvidence.getDescription()).isEqualTo("Ceiling patched but still damp");
+        verify(photo).linkEvidence(savedEvidence);
+        verify(secondPhoto).linkEvidence(savedEvidence);
+
+        // Evidence Added 이벤트 (증거 ID 참조)
+        ArgumentCaptor<CaseEvent> eventCaptor = ArgumentCaptor.forClass(CaseEvent.class);
+        verify(caseEventRepository).save(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getType()).isEqualTo(CaseEventType.EVIDENCE_ADDED);
+        assertThat(eventCaptor.getValue().getRefType()).isEqualTo(CaseEventRefType.EVIDENCE);
+        assertThat(eventCaptor.getValue().getRefId()).isEqualTo(10L);
+
+        // 재분석 대기
+        assertThat(caseEntity.getAnalysisStatus()).isEqualTo(AnalysisStatus.PENDING);
+    }
+
+    @Test
+    @DisplayName("증거 추가: phase를 생략하면 INITIAL")
+    void addEvidenceDefaultPhase() {
+        Case caseEntity = caseOf(owner(1L), CaseStage.AWAITING_RESPONSE);
+        given(caseRepository.findByIdAndDeletedAtIsNull(6L)).willReturn(Optional.of(caseEntity));
+        File photo = fileOf(1L, MediaType.PHOTO);
+        given(fileRepository.findAllById(any())).willReturn(List.of(photo));
+        given(evidenceRepository.countByUserId(1L)).willReturn(0L);
+        given(evidenceRepository.save(any(Evidence.class))).willAnswer(invocation -> invocation.getArgument(0));
+        stubCaseOverview();
+
+        caseService.addEvidence(6L, 1L, evidenceAddRequest(List.of(110L), null, null));
+
+        ArgumentCaptor<Evidence> evidenceCaptor = ArgumentCaptor.forClass(Evidence.class);
+        verify(evidenceRepository).save(evidenceCaptor.capture());
+        assertThat(evidenceCaptor.getValue().getPhase()).isEqualTo(EvidencePhase.INITIAL);
+    }
+
+    @Test
+    @DisplayName("증거 추가: 파일이 없으면 EVIDENCE_REQUIRED")
+    void addEvidenceRequired() {
+        Case caseEntity = caseOf(owner(1L), CaseStage.AWAITING_RESPONSE);
+        given(caseRepository.findByIdAndDeletedAtIsNull(6L)).willReturn(Optional.of(caseEntity));
+
+        assertThatThrownBy(() -> caseService.addEvidence(6L, 1L, evidenceAddRequest(List.of(), null, null)))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(CaseErrorCode.EVIDENCE_REQUIRED);
+        verify(evidenceRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("증거 추가: 다른 사람 케이스면 NOT_CASE_OWNER")
+    void addEvidenceNotOwner() {
+        Case caseEntity = caseOf(owner(1L), CaseStage.AWAITING_RESPONSE);
+        given(caseRepository.findByIdAndDeletedAtIsNull(6L)).willReturn(Optional.of(caseEntity));
+
+        assertThatThrownBy(() -> caseService.addEvidence(6L, 2L, evidenceAddRequest(List.of(110L), null, null)))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(CaseErrorCode.NOT_CASE_OWNER);
+        verify(evidenceRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("증거 추가: 이미 다른 증거에 연결된 파일이면 FILE_ALREADY_LINKED")
+    void addEvidenceFileAlreadyLinked() {
+        Case caseEntity = caseOf(owner(1L), CaseStage.AWAITING_RESPONSE);
+        given(caseRepository.findByIdAndDeletedAtIsNull(6L)).willReturn(Optional.of(caseEntity));
+        File linkedFile = fileOf(1L, MediaType.PHOTO);
+        given(linkedFile.getEvidence()).willReturn(mock(Evidence.class));
+        given(fileRepository.findAllById(any())).willReturn(List.of(linkedFile));
+
+        assertThatThrownBy(() -> caseService.addEvidence(6L, 1L, evidenceAddRequest(List.of(110L), null, null)))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(FileErrorCode.FILE_ALREADY_LINKED);
+        verify(evidenceRepository, never()).save(any());
+    }
+
     // ========== 테스트 픽스처 ==========
 
     private User owner(Long id) {
@@ -403,5 +513,22 @@ class CaseServiceTest {
         given(caseRepository.save(any(Case.class))).willAnswer(invocation -> invocation.getArgument(0));
         given(evidenceRepository.countByUserId(1L)).willReturn(0L);
         given(evidenceRepository.save(any(Evidence.class))).willAnswer(invocation -> invocation.getArgument(0));
+    }
+
+    // 증거 추가 요청 (DTO에 setter가 없어서 필드에 직접 값 세팅)
+    private CaseEvidenceAddRequest evidenceAddRequest(List<Long> fileIds, EvidencePhase phase, String note) {
+        CaseEvidenceAddRequest request = new CaseEvidenceAddRequest();
+        ReflectionTestUtils.setField(request, "fileIds", fileIds);
+        ReflectionTestUtils.setField(request, "phase", phase);
+        ReflectionTestUtils.setField(request, "note", note);
+        return request;
+    }
+
+    // 갱신된 케이스 상세 조회에 필요한 저장소 동작 (이벤트·통지·체크리스트·증거 모두 비어 있음)
+    private void stubCaseOverview() {
+        given(caseEventRepository.findAllByCaseEntityOrderByOccurredAtAscIdAsc(any())).willReturn(List.of());
+        given(noticeRepository.findAllByCaseEntityAndSentAtIsNotNullOrderBySentAtAsc(any())).willReturn(List.of());
+        given(caseChecklistItemRepository.findAllByCaseEntityOrderBySortOrderAscIdAsc(any())).willReturn(List.of());
+        given(evidenceRepository.findAllByCaseEntityAndDeletedAtIsNullOrderByCreatedAtAscIdAsc(any())).willReturn(List.of());
     }
 }

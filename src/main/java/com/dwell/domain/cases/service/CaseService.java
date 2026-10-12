@@ -4,11 +4,13 @@ import com.dwell.domain.building.entity.Building;
 import com.dwell.domain.building.entity.UserPlace;
 import com.dwell.domain.building.repository.UserPlaceRepository;
 import com.dwell.domain.cases.dto.request.CaseCreateRequest;
+import com.dwell.domain.cases.dto.request.CaseEvidenceAddRequest;
 import com.dwell.domain.cases.dto.response.*;
 import com.dwell.domain.cases.entity.Case;
 import com.dwell.domain.cases.entity.CaseChecklistItem;
 import com.dwell.domain.cases.entity.CaseEvent;
 import com.dwell.domain.cases.enums.AffectedArea;
+import com.dwell.domain.cases.enums.CaseEventRefType;
 import com.dwell.domain.cases.enums.CaseEventType;
 import com.dwell.domain.cases.enums.CaseStage;
 import com.dwell.domain.cases.exception.CaseErrorCode;
@@ -16,6 +18,7 @@ import com.dwell.domain.cases.repository.CaseChecklistItemRepository;
 import com.dwell.domain.cases.repository.CaseEventRepository;
 import com.dwell.domain.cases.repository.CaseRepository;
 import com.dwell.domain.evidence.entity.Evidence;
+import com.dwell.domain.evidence.enums.EvidencePhase;
 import com.dwell.domain.evidence.repository.EvidenceRepository;
 import com.dwell.domain.file.entity.File;
 import com.dwell.domain.file.enums.FilePurpose;
@@ -190,41 +193,8 @@ public class CaseService {
             throw new CustomException(CaseErrorCode.INVALID_AFFECTED_AREA);
         }
 
-        // 증거 파일이 1개 이상인지 확인
-        if (request.getFileIds() == null || request.getFileIds().isEmpty()) {
-            log.warn("[CaseService] Case creation failed: no evidence file");
-            throw new CustomException(CaseErrorCode.EVIDENCE_REQUIRED);
-        }
-
-        // 파일 조회 (같은 ID가 여러 번 오면 한 번만)
-        List<Long> fileIds = request.getFileIds().stream().distinct().toList();
-        List<File> files = fileRepository.findAllById(fileIds);
-
-        // 없는 파일이 섞여 있으면 X
-        if (files.size() != fileIds.size()) {
-            log.warn("[CaseService] Case creation failed: file not found: fileIds={}", fileIds);
-            throw new CustomException(FileErrorCode.FILE_NOT_FOUND);
-        }
-
-        for (File file : files) {
-            // 남의 파일이면 X (파일이 있는지 드러나지 않게 없는 파일과 같은 에러)
-            if (!file.getUser().getId().equals(userId)) {
-                log.warn("[CaseService] Case creation failed: file of another user: fileId={}", file.getId());
-                throw new CustomException(FileErrorCode.FILE_NOT_FOUND);
-            }
-
-            // 증거용으로 올린 파일이 아니면 X (프로필 사진·채팅 첨부 등)
-            if (file.getPurpose() != FilePurpose.EVIDENCE) {
-                log.warn("[CaseService] Case creation failed: not an evidence file: fileId={}, purpose={}", file.getId(), file.getPurpose());
-                throw new CustomException(FileErrorCode.NOT_EVIDENCE_FILE);
-            }
-
-            // 이미 다른 증거에 연결된 파일이면 X
-            if (file.getEvidence() != null) {
-                log.warn("[CaseService] Case creation failed: file already linked: fileId={}", file.getId());
-                throw new CustomException(FileErrorCode.FILE_ALREADY_LINKED);
-            }
-        }
+        // 증거 파일 조회·검증 (내 파일, 증거용, 아직 연결되지 않은 파일만)
+        List<File> files = findEvidenceFiles(userId, request.getFileIds());
 
         // 로그인한 사용자 (인증 필터에서 이미 확인했으므로 조회 없이 참조만)
         User user = userRepository.getReferenceById(userId);
@@ -268,30 +238,8 @@ public class CaseService {
         // DB 저장
         Case savedCase = caseRepository.save(caseEntity);
 
-        // 증거 번호 생성 (EV-001, EV-002, ... 사용자별)
-        long evidenceCount = evidenceRepository.countByUserId(userId);
-        String evidenceCode = String.format("EV-%03d", evidenceCount + 1);
-
-        // 증거 객체 생성 (케이스 생성 때 올린 파일들을 증거 1건으로 묶음)
-        Evidence evidence =
-                Evidence.builder()
-                        .caseEntity(savedCase)
-                        .user(user)
-                        .evidenceCode(evidenceCode)
-                        .mediaType(toEvidenceMediaType(files))
-                        .location(request.getLocation())
-                        .locationDetail(request.getLocationOther())
-                        .description(request.getDescription())
-                        .analysisStatus(AnalysisStatus.PENDING)
-                        .build();
-
-        // DB 저장
-        Evidence savedEvidence = evidenceRepository.save(evidence);
-
-        // 파일을 증거에 연결 (트랜잭션이 끝날 때 변경 감지로 저장)
-        for (File file : files) {
-            file.linkEvidence(savedEvidence);
-        }
+        // 증거 생성 후 파일 연결 (케이스 생성 때 올린 파일들을 증거 1건으로 묶음)
+        createEvidence(savedCase, userId, files, EvidencePhase.INITIAL, request.getDescription());
 
         // 케이스 생성 이벤트 객체 생성 (진행 스텝·타임라인의 "Case Created")
         CaseEvent caseEvent =
@@ -320,7 +268,128 @@ public class CaseService {
                 .build();
     }
 
+    // 케이스 증거 추가
+    @Transactional
+    public CaseOverviewResponse addEvidence(Long caseId, Long userId, CaseEvidenceAddRequest request) {
+
+        // 본인 케이스 조회 (삭제된 케이스 제외)
+        Case caseEntity = findOwnedCase(caseId, userId);
+
+        // 증거 파일 조회·검증 (내 파일, 증거용, 아직 연결되지 않은 파일만)
+        List<File> files = findEvidenceFiles(userId, request.getFileIds());
+
+        // 증거 단계 (생략하면 INITIAL)
+        EvidencePhase phase = request.getPhase();
+        if (phase == null) {
+            phase = EvidencePhase.INITIAL;
+        }
+
+        // 증거 생성 후 파일 연결 (이번에 올린 파일들을 증거 1건으로 묶음)
+        Evidence savedEvidence = createEvidence(caseEntity, userId, files, phase, request.getNote());
+
+        // 증거 추가 이벤트 객체 생성 (증거 1건당 이벤트 1개)
+        CaseEvent caseEvent =
+                CaseEvent.builder()
+                        .caseEntity(caseEntity)
+                        .type(CaseEventType.EVIDENCE_ADDED)
+                        .occurredAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS))
+                        .title(new LocalizedText(CaseEventType.EVIDENCE_ADDED.getLabel(), null))
+                        .refType(CaseEventRefType.EVIDENCE)
+                        .refId(savedEvidence.getId())
+                        .alert(false)
+                        .build();
+
+        // DB 저장
+        caseEventRepository.save(caseEvent);
+
+        // 증거가 늘었으니 케이스 분석·심각도 재계산 대기 (변경 감지로 저장)
+        caseEntity.markAnalysisPending();
+
+        // TODO AI 분석 비동기 재시작 (severity·analysis 재계산 후 analysisStatus = DONE)
+        // TODO phase가 AFTER_REPAIR면 수리 전후 비교 검증 시작
+
+        // 로그 출력
+        log.info("[CaseService] Evidence added: caseId={}, evidenceId={}, phase={}, files={}", caseId, savedEvidence.getId(), phase, files.size());
+
+        // 응답 반환 (갱신된 케이스 상세)
+        return getCaseOverview(caseId, userId);
+    }
+
     // ========== 헬퍼 함수 ==========
+
+    // 증거 파일 조회·검증 (케이스 생성, 증거 추가 공통)
+    private List<File> findEvidenceFiles(Long userId, List<Long> requestFileIds) {
+
+        // 증거 파일이 1개 이상인지 확인
+        if (requestFileIds == null || requestFileIds.isEmpty()) {
+            log.warn("[CaseService] Evidence failed: no evidence file");
+            throw new CustomException(CaseErrorCode.EVIDENCE_REQUIRED);
+        }
+
+        // 파일 조회 (같은 ID가 여러 번 오면 한 번만)
+        List<Long> fileIds = requestFileIds.stream().distinct().toList();
+        List<File> files = fileRepository.findAllById(fileIds);
+
+        // 없는 파일이 섞여 있으면 X
+        if (files.size() != fileIds.size()) {
+            log.warn("[CaseService] Evidence failed: file not found: fileIds={}", fileIds);
+            throw new CustomException(FileErrorCode.FILE_NOT_FOUND);
+        }
+
+        for (File file : files) {
+            // 남의 파일이면 X (파일이 있는지 드러나지 않게 없는 파일과 같은 에러)
+            if (!file.getUser().getId().equals(userId)) {
+                log.warn("[CaseService] Evidence failed: file of another user: fileId={}", file.getId());
+                throw new CustomException(FileErrorCode.FILE_NOT_FOUND);
+            }
+
+            // 증거용으로 올린 파일이 아니면 X (프로필 사진·채팅 첨부 등)
+            if (file.getPurpose() != FilePurpose.EVIDENCE) {
+                log.warn("[CaseService] Evidence failed: not an evidence file: fileId={}, purpose={}", file.getId(), file.getPurpose());
+                throw new CustomException(FileErrorCode.NOT_EVIDENCE_FILE);
+            }
+
+            // 이미 다른 증거에 연결된 파일이면 X
+            if (file.getEvidence() != null) {
+                log.warn("[CaseService] Evidence failed: file already linked: fileId={}", file.getId());
+                throw new CustomException(FileErrorCode.FILE_ALREADY_LINKED);
+            }
+        }
+
+        return files;
+    }
+
+    // 증거 생성 후 파일 연결 (한 번에 올린 파일 = 증거 1건)
+    private Evidence createEvidence(Case caseEntity, Long userId, List<File> files, EvidencePhase phase, String description) {
+
+        // 증거 번호 생성 (EV-001, EV-002, ... 사용자별)
+        long evidenceCount = evidenceRepository.countByUserId(userId);
+        String evidenceCode = String.format("EV-%03d", evidenceCount + 1);
+
+        // 증거 객체 생성 (공간은 케이스와 같음)
+        Evidence evidence =
+                Evidence.builder()
+                        .caseEntity(caseEntity)
+                        .user(caseEntity.getUser())
+                        .evidenceCode(evidenceCode)
+                        .mediaType(toEvidenceMediaType(files))
+                        .phase(phase)
+                        .location(caseEntity.getLocation())
+                        .locationDetail(caseEntity.getLocationOther())
+                        .description(description)
+                        .analysisStatus(AnalysisStatus.PENDING)
+                        .build();
+
+        // DB 저장
+        Evidence savedEvidence = evidenceRepository.save(evidence);
+
+        // 파일을 증거에 연결 (트랜잭션이 끝날 때 변경 감지로 저장)
+        for (File file : files) {
+            file.linkEvidence(savedEvidence);
+        }
+
+        return savedEvidence;
+    }
 
     // 와프 형식: "123 Main St, Apt 4B" (unit은 "Apt 4B" 형태로 저장됨)
     private String toAddress(Case caseEntity) {
