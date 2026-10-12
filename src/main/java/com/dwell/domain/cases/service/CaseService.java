@@ -24,6 +24,7 @@ import com.dwell.domain.file.entity.File;
 import com.dwell.domain.file.enums.FilePurpose;
 import com.dwell.domain.file.exception.FileErrorCode;
 import com.dwell.domain.file.repository.FileRepository;
+import com.dwell.domain.file.service.FileService;
 import com.dwell.domain.notice.entity.Notice;
 import com.dwell.domain.notice.repository.NoticeRepository;
 import com.dwell.domain.user.entity.User;
@@ -62,6 +63,7 @@ public class CaseService {
     private final CaseTimelineEventFactory caseTimelineEventFactory;
     private final UserRepository userRepository;
     private final UserPlaceRepository userPlaceRepository;
+    private final FileService fileService;
 
     public CaseOverviewResponse getCaseOverview(Long caseId, Long userId) {
 
@@ -208,9 +210,13 @@ public class CaseService {
             unit = userPlace.getUnit();
         }
 
-        // 케이스 번호 생성 (C-001, C-002, ... / 삭제된 케이스도 포함해서 셈)
-        long caseCount = caseRepository.countByUserId(userId);
-        String caseNumber = String.format("C-%03d", caseCount + 1);
+        // 케이스 번호 생성 (가장 최근 케이스 번호 + 1, 삭제 후에도 겹치지 않음)
+        int caseSequence = 0;
+        Case latestCase = caseRepository.findTopByUserIdOrderByIdDesc(userId).orElse(null);
+        if (latestCase != null) {
+            caseSequence = Integer.parseInt(latestCase.getCaseNumber().substring(2)); // "C-006" → 6
+        }
+        String caseNumber = String.format("C-%03d", caseSequence + 1);
 
         // 케이스 객체 생성 (제목은 초기값, 심각도는 AI 분석 후에 채움)
         Case caseEntity =
@@ -305,14 +311,40 @@ public class CaseService {
         // 증거가 늘었으니 케이스 분석·심각도 재계산 대기 (변경 감지로 저장)
         caseEntity.markAnalysisPending();
 
-        // TODO AI 분석 비동기 재시작 (severity·analysis 재계산 후 analysisStatus = DONE)
-        // TODO phase가 AFTER_REPAIR면 수리 전후 비교 검증 시작
+        // TODO : AI 분석 비동기 재시작 (severity·analysis 재계산 후 analysisStatus = DONE)
+        // TODO : phase가 AFTER_REPAIR면 수리 전후 비교 검증 시작
 
         // 로그 출력
         log.info("[CaseService] Evidence added: caseId={}, evidenceId={}, phase={}, files={}", caseId, savedEvidence.getId(), phase, files.size());
 
         // 응답 반환 (갱신된 케이스 상세)
         return getCaseOverview(caseId, userId);
+    }
+
+    // 케이스 삭제 (Hard Delete 방식 : 증거·파일·타임라인·체크리스트·Notice·검증·케이스 채팅까지 전부)
+    @Transactional
+    public void deleteCase(Long caseId, Long userId) {
+
+        // 본인 케이스 조회
+        Case caseEntity = findOwnedCase(caseId, userId);
+
+        // 증거에 연결된 파일 조회 (파일은 DB에서 자동으로 지워지지 않음)
+        List<Evidence> evidences = evidenceRepository.findAllByCaseEntity(caseEntity);
+        List<File> files = new ArrayList<>();
+        if (!evidences.isEmpty()) {
+            files = fileRepository.findAllByEvidenceInOrderByIdAsc(evidences);
+        }
+
+        // 파일 삭제 (DB는 바로, S3 원본은 커밋 뒤에)
+        fileService.deleteFiles(files);
+
+        // 케이스 삭제 (증거·타임라인·체크리스트 등은 DB의 ON DELETE CASCADE로 함께 삭제)
+        caseRepository.delete(caseEntity);
+
+        // TODO : Building Signal·Insight는 다음 재계산 때 남아 있는 PUBLIC 케이스만 세면 자동으로 제외
+
+        // 로그 출력
+        log.info("[CaseService] Case deleted: caseId={}, files={}", caseId, files.size());
     }
 
     // ========== 헬퍼 함수 ==========
@@ -362,9 +394,13 @@ public class CaseService {
     // 증거 생성 후 파일 연결 (한 번에 올린 파일 = 증거 1건)
     private Evidence createEvidence(Case caseEntity, Long userId, List<File> files, EvidencePhase phase, String description) {
 
-        // 증거 번호 생성 (EV-001, EV-002, ... 사용자별)
-        long evidenceCount = evidenceRepository.countByUserId(userId);
-        String evidenceCode = String.format("EV-%03d", evidenceCount + 1);
+        // 증거 번호 생성 (가장 최근 증거 번호 + 1, 삭제 후에도 겹치지 않음)
+        int evidenceSequence = 0;
+        Evidence latestEvidence = evidenceRepository.findTopByUserIdOrderByIdDesc(userId).orElse(null);
+        if (latestEvidence != null) {
+            evidenceSequence = Integer.parseInt(latestEvidence.getEvidenceCode().substring(3)); // "EV-007" → 7
+        }
+        String evidenceCode = String.format("EV-%03d", evidenceSequence + 1);
 
         // 증거 객체 생성 (공간은 케이스와 같음)
         Evidence evidence =

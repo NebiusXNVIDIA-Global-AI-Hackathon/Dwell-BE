@@ -13,6 +13,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -21,6 +23,7 @@ import java.io.UncheckedIOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -91,6 +94,41 @@ public class FileService {
                 .mimeType(savedFile.getMimeType())
                 .sizeBytes(savedFile.getSizeBytes())
                 .build();
+    }
+
+    // 파일 삭제 (DB는 바로, S3 원본은 트랜잭션이 커밋된 뒤에 삭제)
+    @Transactional
+    public void deleteFiles(List<File> files) {
+
+        // 지울 파일이 없으면 끝
+        if (files.isEmpty()) {
+            return;
+        }
+
+        // S3에서 지울 경로 (DB 삭제 전에 미리 모아 둠)
+        List<String> storageKeys = files.stream().map(File::getStorageKey).toList();
+
+        // DB 삭제 (실제 삭제는 아니고 삭제 예약과 비슷 -> DB에서 삭제가 되면 S3 원본을 삭제)
+        fileRepository.deleteAll(files);
+
+        // S3 삭제는 DB 삭제가 확정된 뒤에 (롤백되면 원본이 남아 있어야 함)
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                for (String storageKey : storageKeys) {
+                    try {
+                        s3Uploader.delete(storageKey);
+                    } catch (Exception e) {
+
+                        // DB는 이미 지워졌으니 응답은 성공으로 두고, 남은 S3 파일은 로그로 확인
+                        log.error("[FileService] S3 file deletion failed: storageKey={}", storageKey, e);
+                    }
+                }
+            }
+        });
+
+        // 로그 출력
+        log.info("[FileService] Files deleted: count={}", files.size());
     }
 
     // ========== 헬퍼 함수 ==========
