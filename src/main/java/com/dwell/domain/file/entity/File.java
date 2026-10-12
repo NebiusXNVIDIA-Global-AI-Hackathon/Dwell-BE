@@ -45,7 +45,7 @@ public class File extends BaseCreatedTimeEntity {
     @Column(nullable = false, length = 10)
     private MediaType mediaType;
 
-    @Column(nullable = false, length = 50)
+    @Column(nullable = false, length = 100)
     private String mimeType;
 
     @Column(nullable = false)
@@ -82,5 +82,10 @@ public class File extends BaseCreatedTimeEntity {
         this.storageKey = storageKey;
         this.sha256 = sha256;
         this.capturedAt = capturedAt;
+    }
+
+    // 케이스 생성 시 증거에 연결
+    public void linkEvidence(Evidence evidence) {
+        this.evidence = evidence;
     }
 }
