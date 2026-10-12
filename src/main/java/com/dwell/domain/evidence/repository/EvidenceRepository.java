@@ -11,9 +11,6 @@ public interface EvidenceRepository extends JpaRepository<Evidence, Long> {
 
     List<Evidence> findAllByCaseEntityAndDeletedAtIsNullOrderByCreatedAtAscIdAsc(Case caseEntity);
 
-    // 케이스의 모든 증거 (케이스 삭제 시 파일 정리용)
-    List<Evidence> findAllByCaseEntity(Case caseEntity);
-
     // 사용자의 가장 최근 증거 (증거 번호 생성용)
     Optional<Evidence> findTopByUserIdOrderByIdDesc(Long userId);
 }

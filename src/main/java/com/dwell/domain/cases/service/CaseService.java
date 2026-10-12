@@ -329,11 +329,8 @@ public class CaseService {
         Case caseEntity = findOwnedCase(caseId, userId);
 
         // 증거에 연결된 파일 조회 (파일은 DB에서 자동으로 지워지지 않음)
-        List<Evidence> evidences = evidenceRepository.findAllByCaseEntity(caseEntity);
-        List<File> files = new ArrayList<>();
-        if (!evidences.isEmpty()) {
-            files = fileRepository.findAllByEvidenceInOrderByIdAsc(evidences);
-        }
+        // 증거 엔티티를 불러오면 케이스 삭제 시 Hibernate가 "삭제된 케이스를 참조한다"며 막아서 파일만 바로 조회
+        List<File> files = fileRepository.findAllByEvidenceCaseEntity(caseEntity);
 
         // 파일 삭제 (DB는 바로, S3 원본은 커밋 뒤에)
         fileService.deleteFiles(files);

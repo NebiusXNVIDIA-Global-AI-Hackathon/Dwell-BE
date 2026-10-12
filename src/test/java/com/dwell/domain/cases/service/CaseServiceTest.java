@@ -482,12 +482,10 @@ class CaseServiceTest {
         Case caseEntity = caseOf(owner(1L), CaseStage.AWAITING_RESPONSE);
         given(caseRepository.findByIdAndDeletedAtIsNull(6L)).willReturn(Optional.of(caseEntity));
 
-        // 증거 1건 + 파일 2개
-        Evidence evidence = mock(Evidence.class);
-        given(evidenceRepository.findAllByCaseEntity(caseEntity)).willReturn(List.of(evidence));
+        // 케이스의 증거 파일 2개
         File photo = fileOf(1L, MediaType.PHOTO);
         File video = fileOf(1L, MediaType.VIDEO);
-        given(fileRepository.findAllByEvidenceInOrderByIdAsc(List.of(evidence))).willReturn(List.of(photo, video));
+        given(fileRepository.findAllByEvidenceCaseEntity(caseEntity)).willReturn(List.of(photo, video));
 
         caseService.deleteCase(6L, 1L);
 
@@ -502,12 +500,11 @@ class CaseServiceTest {
     void deleteCaseWithoutEvidence() {
         Case caseEntity = caseOf(owner(1L), CaseStage.LOGGED);
         given(caseRepository.findByIdAndDeletedAtIsNull(6L)).willReturn(Optional.of(caseEntity));
-        given(evidenceRepository.findAllByCaseEntity(caseEntity)).willReturn(List.of());
+        given(fileRepository.findAllByEvidenceCaseEntity(caseEntity)).willReturn(List.of());
 
         caseService.deleteCase(6L, 1L);
 
         verify(fileService).deleteFiles(List.of());
-        verify(fileRepository, never()).findAllByEvidenceInOrderByIdAsc(any());
         verify(caseRepository).delete(caseEntity);
     }
 
