@@ -26,6 +26,10 @@ spring:
         format_sql: true
     show-sql: ${SHOW_SQL:false}
 
+server:
+  tomcat:
+    max-swallow-size: -1 # Read oversized uploads to the end so the client gets 413 instead of a dropped connection
+
 jwt:
   secret: ${JWT_SECRET} # At least 32 bytes (32 ASCII chars) for HS256
   access-token-expiration: ${JWT_ACCESS_EXPIRATION:3600000} # ms (default 1 hour)
