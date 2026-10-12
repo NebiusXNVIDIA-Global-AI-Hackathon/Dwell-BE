@@ -9,5 +9,6 @@ public enum Location {
     BALCONY,
     EXTERIOR,
     ENTIRE_UNIT,
-    OTHER
+    OTHER,
+    LAUNDRY_AREA
 }
