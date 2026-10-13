@@ -80,6 +80,8 @@ jobs:
 
             AWS_REGION=ap-northeast-2
             AWS_S3_BUCKET=${{ secrets.AWS_S3_BUCKET }}
+
+            NEBIUS_API_KEY=${{ secrets.NEBIUS_API_KEY }}
             EOF
 
             docker compose --env-file .env -f docker/docker-compose.yml pull app

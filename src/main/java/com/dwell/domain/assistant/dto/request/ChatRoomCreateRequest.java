@@ -15,6 +15,9 @@ public class ChatRoomCreateRequest {
     @Schema(description = "케이스 ID (없으면 일반 채팅방)", example = "5")
     private Long caseId;
 
+    @Schema(description = "내 집 확인 결과 ID (Check My Unit -> Talk to Deaver, caseId와 같이 보내면 400)", example = "3")
+    private Long inspectionId;
+
     @Schema(description = "진입 목적 (선택, Update status에서 진입 시 REPLY_RECEIVED)", example = "REPLY_RECEIVED")
     private ConversationIntent intent;
 }

@@ -32,7 +32,7 @@ services:
       db:
         condition: service_healthy
     env_file:
-      - ../.env
+      - ../.env # DB, JWT, AWS, NEBIUS_API_KEY (assistant) ...
     environment:
       DB_URL: jdbc:postgresql://db:5432/dwell
       TZ: America/New_York

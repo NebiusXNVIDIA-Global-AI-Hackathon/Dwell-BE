@@ -2,6 +2,7 @@ package com.dwell.domain.assistant.repository;
 
 import com.dwell.domain.assistant.entity.Message;
 import com.dwell.domain.assistant.enums.MessageRole;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -34,6 +35,11 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
             """)
     List<Message> findFirstMessages(@Param("conversationIds") Collection<Long> conversationIds,
                                     @Param("role") MessageRole role);
+
+    // 대화 메시지 최신 순 (대화 조회·AI 대화 기록용, before가 있으면 그 이전만)
+    List<Message> findByConversationIdOrderByIdDesc(Long conversationId, Pageable pageable);
+
+    List<Message> findByConversationIdAndIdLessThanOrderByIdDesc(Long conversationId, Long before, Pageable pageable);
 
     // 대화의 첫 메시지 (role 기준) - 기존 채팅방 인사 메시지 조회용
     Optional<Message> findFirstByConversationIdAndRoleOrderByIdAsc(Long conversationId, MessageRole role);

@@ -1,8 +1,10 @@
 package com.dwell.domain.assistant.service;
 
 import com.dwell.domain.assistant.dto.request.ChatRoomCreateRequest;
+import com.dwell.domain.assistant.dto.response.CaseCandidatesResponse;
 import com.dwell.domain.assistant.dto.response.ChatRoomCreateResponse;
 import com.dwell.domain.assistant.dto.response.ConversationListResponse;
+import com.dwell.domain.assistant.dto.response.ConversationMessagesResponse;
 
 public interface AssistantService {
 
@@ -36,4 +38,25 @@ public interface AssistantService {
      * @return void
      */
     void deleteChatRoom(Long userId, Long conversationId);
+
+    /**
+     * [대화 조회 서비스]
+     * @author 김민호
+     * @description: 채팅방 메시지를 오래된 순으로 조회합니다 (카드·법률 근거·빠른 답장·선택 버튼·첨부 포함).
+     *               before(messageId)를 주면 그보다 이전 메시지를 size개 조회합니다.
+     *
+     * @request userId, conversationId, before, size
+     * @return ConversationMessagesResponse(conversationId, type, case, messages, hasMore)
+     */
+    ConversationMessagesResponse getMessages(Long userId, Long conversationId, Long before, int size);
+
+    /**
+     * [Bring in a case 후보 목록 서비스]
+     * @author 김민호
+     * @description: 아직 채팅방이 없고 Resolved·삭제가 아닌 내 케이스를 상태별(LOGGED -> IN_PROGRESS)로 묶어 줍니다.
+     *
+     * @request userId
+     * @return CaseCandidatesResponse(groups)
+     */
+    CaseCandidatesResponse getCaseCandidates(Long userId);
 }

@@ -22,6 +22,9 @@ public class ChatRoomCreateResponse {
     @JsonProperty("case")
     private CaseSummaryResponse caseSummary;
 
+    @Schema(description = "연결된 내 집 확인 결과 (INSPECTION 채팅방이 아니면 null)")
+    private InspectionSummaryResponse inspection;
+
     @Schema(description = "Deaver 첫 인사 메시지")
     private GreetingResponse greeting;
 

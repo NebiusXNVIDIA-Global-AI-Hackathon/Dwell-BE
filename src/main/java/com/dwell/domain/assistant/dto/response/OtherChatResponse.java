@@ -1,5 +1,6 @@
 package com.dwell.domain.assistant.dto.response;
 
+import com.dwell.domain.assistant.enums.ConversationType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
@@ -14,7 +15,10 @@ public class OtherChatResponse {
     @Schema(description = "채팅방 ID", example = "17")
     private Long conversationId;
 
-    @Schema(description = "채팅 제목 (첫 사용자 메시지 앞 30자)", example = "My landlord isn't answering")
+    @Schema(description = "채팅방 유형 (OTHER / INSPECTION)", example = "OTHER")
+    private ConversationType type;
+
+    @Schema(description = "채팅 제목 (OTHER: 첫 사용자 메시지 앞 30자, INSPECTION: Possible {이슈} Issue)", example = "My landlord isn't answering")
     private String title;
 
     @Schema(description = "마지막 메시지 (없으면 null)", example = "Deaver: Don't worry. First, send a written notice.")
@@ -22,4 +26,7 @@ public class OtherChatResponse {
 
     @Schema(description = "마지막 메시지 시각, UTC (없으면 null)", example = "2026-09-30T11:00:00Z")
     private Instant lastMessageAt;
+
+    @Schema(description = "마지막 Deaver 메시지 이후 채팅방을 열지 않았는지", example = "false")
+    private Boolean hasUnread;
 }

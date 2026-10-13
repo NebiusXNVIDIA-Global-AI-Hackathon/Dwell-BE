@@ -1,40 +1,55 @@
 package com.dwell.domain.assistant.service;
 
 import com.dwell.domain.assistant.dto.request.ChatRoomCreateRequest;
+import com.dwell.domain.assistant.dto.response.CaseCandidateGroupResponse;
+import com.dwell.domain.assistant.dto.response.CaseCandidateResponse;
+import com.dwell.domain.assistant.dto.response.CaseCandidatesResponse;
 import com.dwell.domain.assistant.dto.response.CaseChatResponse;
 import com.dwell.domain.assistant.dto.response.CaseSummaryResponse;
 import com.dwell.domain.assistant.dto.response.ChatRoomCreateResponse;
 import com.dwell.domain.assistant.dto.response.ConversationListResponse;
+import com.dwell.domain.assistant.dto.response.ConversationMessagesResponse;
 import com.dwell.domain.assistant.dto.response.GreetingResponse;
+import com.dwell.domain.assistant.dto.response.InspectionSummaryResponse;
 import com.dwell.domain.assistant.dto.response.OtherChatResponse;
+import com.dwell.domain.assistant.entity.AssistantAction;
 import com.dwell.domain.assistant.entity.Conversation;
 import com.dwell.domain.assistant.entity.Message;
 import com.dwell.domain.assistant.enums.ConversationIntent;
 import com.dwell.domain.assistant.enums.ConversationType;
 import com.dwell.domain.assistant.enums.MessageRole;
 import com.dwell.domain.assistant.exception.AssistantErrorCode;
+import com.dwell.domain.assistant.repository.AssistantActionRepository;
 import com.dwell.domain.assistant.repository.ConversationRepository;
 import com.dwell.domain.assistant.repository.MessageRepository;
+import com.dwell.domain.building.entity.InspectionResult;
+import com.dwell.domain.building.repository.InspectionResultRepository;
 import com.dwell.domain.cases.entity.Case;
 import com.dwell.domain.cases.enums.CaseStage;
 import com.dwell.domain.cases.repository.CaseRepository;
+import com.dwell.domain.file.service.S3Uploader;
 import com.dwell.domain.user.entity.User;
 import com.dwell.domain.user.repository.UserRepository;
-import com.dwell.global.exception.CustomException;
 import com.dwell.global.common.enums.IssueType;
+import com.dwell.global.exception.CustomException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -48,6 +63,7 @@ public class AssistantServiceImpl implements AssistantService {
     private static final String ASSISTANT_NAME = "Deaver";
     private static final String DEFAULT_TITLE = "New Chat"; // Other 채팅방에서 제목 기본값
     private static final int TITLE_MAX_LENGTH = 30; // 제목 글자수 제한
+    private static final int MAX_MESSAGE_PAGE_SIZE = 50;
 
     // Deaver 인사 메시지
     private static final String OTHER_GREETING = "Hi %s! Ask me anything about your home, your rights, or a message from your landlord. You can write in any language.";
@@ -57,11 +73,18 @@ public class AssistantServiceImpl implements AssistantService {
     private static final List<String> CASE_QUICK_REPLIES = List.of(
             "Draft a notice to my landlord", "What are my rights?", "What should I do next?");
     private static final String REPLY_RECEIVED_GREETING = "Show me the message you received from your landlord. You can paste the text or upload a screenshot.";
+    private static final String INSPECTION_GREETING = "You checked %d %s of a possible %s issue in your unit: %s. Can you send a photo of what you found? I'll help you decide whether to start a case.";
+    private static final List<String> INSPECTION_QUICK_REPLIES = List.of(
+            "Is this my landlord's responsibility?", "Should I start a case?", "What should I do right now?");
 
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
     private final CaseRepository caseRepository;
     private final UserRepository userRepository;
+    private final AssistantActionRepository assistantActionRepository;
+    private final InspectionResultRepository inspectionResultRepository;
+    private final AssistantMessageMapper messageMapper;
+    private final S3Uploader s3Uploader;
 
     // 채팅 목록 조회 서비스
     @Override
@@ -88,6 +111,13 @@ public class AssistantServiceImpl implements AssistantService {
         Map<Long, Message> firstUserMessages = toMapByConversationId(
                 messageRepository.findFirstMessages(conversationIds, MessageRole.USER));
 
+        // 케이스별 첫 번째 증거 사진 -> 썸네일
+        Map<Long, String> thumbnailUrls = findThumbnailUrls(conversations.stream()
+                .map(Conversation::getCaseEntity)
+                .filter(Objects::nonNull)
+                .map(Case::getId)
+                .toList());
+
         // 최근 메시지 순 정렬 (메시지 없으면 대화 생성 시각 기준)
         Comparator<Conversation> latestFirst = Comparator.comparing(
                 (Conversation c) -> sortKey(c, lastMessages.get(c.getId()))).reversed();
@@ -96,12 +126,12 @@ public class AssistantServiceImpl implements AssistantService {
         List<CaseChatResponse> caseChats = conversations.stream()
                 .filter(c -> c.getType() == ConversationType.CASE && isActiveCase(c))
                 .sorted(latestFirst)
-                .map(c -> toCaseChat(c, lastMessages.get(c.getId())))
+                .map(c -> toCaseChat(c, lastMessages.get(c.getId()), thumbnailUrls.get(c.getCaseEntity().getId())))
                 .toList();
 
-        // Other 채팅방 리스트
+        // Other 채팅방 리스트 (일반 + 내 집 확인)
         List<OtherChatResponse> otherChats = conversations.stream()
-                .filter(c -> c.getType() == ConversationType.OTHER)
+                .filter(c -> c.getType() != ConversationType.CASE)
                 .sorted(latestFirst)
                 .map(c -> toOtherChat(c, lastMessages.get(c.getId()), firstUserMessages.get(c.getId())))
                 .toList();
@@ -122,11 +152,23 @@ public class AssistantServiceImpl implements AssistantService {
     public ChatRoomCreateResponse createChatRoom(Long userId, ChatRoomCreateRequest request) {
 
         Long caseId = request != null ? request.getCaseId() : null;
+        Long inspectionId = request != null ? request.getInspectionId() : null;
         ConversationIntent intent = request != null ? request.getIntent() : null;
 
-        log.info("[AssistantService] 채팅방 생성 서비스 - 시작: userId={}, caseId={}, intent={}", userId, caseId, intent);
+        log.info("[AssistantService] 채팅방 생성 서비스 - 시작: userId={}, caseId={}, inspectionId={}, intent={}", userId, caseId, inspectionId, intent);
+
+        // caseId, inspectionId는 둘 중 하나만
+        if (caseId != null && inspectionId != null) {
+            log.warn("[AssistantService] 채팅방 생성 서비스 - caseId와 inspectionId를 같이 보냈습니다: caseId={}, inspectionId={}", caseId, inspectionId);
+            throw new CustomException(AssistantErrorCode.INVALID_CHAT_TARGET);
+        }
 
         User user = userRepository.getReferenceById(userId);
+
+        // inspectionId 있으면 내 집 확인 채팅방
+        if (inspectionId != null) {
+            return createInspectionChatRoom(userId, user, inspectionId);
+        }
 
         // caseId 없으면 Other 채팅방 생성
         if (caseId == null) {
@@ -223,8 +265,222 @@ public class AssistantServiceImpl implements AssistantService {
     }
 
 
+    // 대화 조회 서비스 (조회하면 읽음 처리)
+    @Override
+    @Transactional
+    public ConversationMessagesResponse getMessages(Long userId, Long conversationId, Long before, int size) {
+
+        log.info("[AssistantService] 대화 조회 서비스 - 시작: userId={}, conversationId={}, before={}, size={}", userId, conversationId, before, size);
+
+        // 본인 채팅방 조회
+        Conversation conversation = findOwnedConversation(userId, conversationId);
+
+        // 메시지 최신 순으로 size+1개 조회 (하나 더 받아서 이전 메시지가 더 있는지 확인)
+        int pageSize = Math.clamp(size, 1, MAX_MESSAGE_PAGE_SIZE);
+        PageRequest page = PageRequest.of(0, pageSize + 1);
+        List<Message> latestFirst = before == null
+                ? messageRepository.findByConversationIdOrderByIdDesc(conversationId, page)
+                : messageRepository.findByConversationIdAndIdLessThanOrderByIdDesc(conversationId, before, page);
+        boolean hasMore = latestFirst.size() > pageSize;
+        List<Message> messages = new ArrayList<>(latestFirst.subList(0, Math.min(pageSize, latestFirst.size())));
+        Collections.reverse(messages);
+
+        // 메시지별 선택 버튼
+        Map<Long, AssistantAction> actions = messages.isEmpty() ? Map.of()
+                : assistantActionRepository.findAllByMessageIdIn(messages.stream().map(Message::getId).toList()).stream()
+                .collect(Collectors.toMap(a -> a.getMessage().getId(), Function.identity()));
+
+        // 읽음 처리 (채팅 목록 hasUnread = false)
+        conversation.markRead();
+
+        // OTHER 헤더 제목용 첫 사용자 메시지
+        Message firstUserMessage = conversation.getType() == ConversationType.OTHER
+                ? messageRepository.findFirstMessages(List.of(conversationId), MessageRole.USER).stream().findFirst().orElse(null)
+                : null;
+
+        log.info("[AssistantService] 대화 조회 서비스 - 완료: conversationId={}, messages={}, hasMore={}", conversationId, messages.size(), hasMore);
+
+        return ConversationMessagesResponse.builder()
+                .conversationId(conversation.getId())
+                .type(conversation.getType())
+                .title(chatTitle(conversation, firstUserMessage))
+                .caseSummary(toCaseSummary(conversation.getCaseEntity()))
+                .inspection(toInspectionSummary(conversation.getInspection()))
+                .messages(messageMapper.toResponses(messages, actions))
+                .hasMore(hasMore)
+                .build();
+    }
+
+
+    // Bring in a case 후보 목록 서비스
+    @Override
+    public CaseCandidatesResponse getCaseCandidates(Long userId) {
+
+        log.info("[AssistantService] Bring in a case 후보 서비스 - 시작: userId={}", userId);
+
+        // 채팅방이 없는 진행 중 케이스 (최신 생성 순)
+        List<Case> cases = conversationRepository.findCaseCandidates(userId);
+
+        // 케이스별 첫 번째 증거 사진 -> 썸네일
+        Map<Long, String> thumbnailUrls = findThumbnailUrls(cases.stream().map(Case::getId).toList());
+
+        // 상태 배지별 그룹 (LOGGED -> IN_PROGRESS)
+        List<CaseCandidateGroupResponse> groups = List.of("LOGGED", "IN_PROGRESS").stream()
+                .map(badge -> CaseCandidateGroupResponse.builder()
+                        .statusBadge(badge)
+                        .cases(cases.stream()
+                                .filter(c -> statusBadge(c.getStage()).equals(badge))
+                                .map(c -> CaseCandidateResponse.builder()
+                                        .caseId(c.getId())
+                                        .caseNumber(c.getCaseNumber())
+                                        .title(c.getTitle())
+                                        .location(c.getLocation())
+                                        .thumbnailUrl(thumbnailUrls.get(c.getId()))
+                                        .createdAt(c.getCreatedAt())
+                                        .build())
+                                .toList())
+                        .build())
+                .toList();
+
+        log.info("[AssistantService] Bring in a case 후보 서비스 - 완료: userId={}, cases={}", userId, cases.size());
+
+        return CaseCandidatesResponse.builder()
+                .groups(groups)
+                .build();
+    }
+
 
     // ========== 헬퍼 함수 ==========
+
+    // 내 집 확인 채팅방 생성 (검사 결과당 1개, 이미 있으면 기존 채팅방 반환)
+    private ChatRoomCreateResponse createInspectionChatRoom(Long userId, User user, Long inspectionId) {
+
+        // 검사 결과 조회 + 본인 확인
+        InspectionResult inspection = inspectionResultRepository.findById(inspectionId)
+                .orElseThrow(() -> {
+                    log.warn("[AssistantService] 채팅방 생성 서비스 - 검사 결과를 찾을 수 없습니다: inspectionId={}", inspectionId);
+                    return new CustomException(AssistantErrorCode.INSPECTION_NOT_FOUND);
+                });
+        if (!inspection.getUser().getId().equals(userId)) {
+            log.warn("[AssistantService] 채팅방 생성 서비스 - 본인 검사 결과가 아닙니다: userId={}, inspectionId={}", userId, inspectionId);
+            throw new CustomException(AssistantErrorCode.INSPECTION_ACCESS_DENIED);
+        }
+
+        // 이미 있으면 처음 인사 메시지와 함께 반환
+        Optional<Conversation> existing = conversationRepository.findByInspectionId(inspectionId);
+        if (existing.isPresent()) {
+            Conversation conversation = existing.get();
+            Message greeting = messageRepository.findFirstByConversationIdAndRoleOrderByIdAsc(
+                    conversation.getId(), MessageRole.ASSISTANT).orElse(null);
+            log.info("[AssistantService] 채팅방 생성 서비스 - 완료: 기존 내 집 확인 채팅방 반환, conversationId={}", conversation.getId());
+            return toCreateResponse(conversation, greeting, false);
+        }
+
+        // 내 집 확인 채팅방 생성 (동시 요청으로 unique 제약 위반 시 409)
+        Conversation conversation;
+        try {
+            conversation = conversationRepository.saveAndFlush(Conversation.builder()
+                    .user(user)
+                    .type(ConversationType.INSPECTION)
+                    .inspection(inspection)
+                    .build());
+        } catch (DataIntegrityViolationException e) {
+            log.warn("[AssistantService] 채팅방 생성 서비스 - 동시 생성 충돌: inspectionId={}", inspectionId);
+            throw new CustomException(AssistantErrorCode.CHAT_ROOM_CREATE_CONFLICT);
+        }
+
+        // 체크한 증상을 요약하고 사진 요청
+        List<String> symptoms = symptomLabels(inspection);
+        Message greeting = saveGreeting(conversation,
+                INSPECTION_GREETING.formatted(symptoms.size(), symptoms.size() == 1 ? "sign" : "signs",
+                        inspection.getIssueCategory().getLabel().toLowerCase(), String.join(", ", symptoms)),
+                INSPECTION_QUICK_REPLIES);
+
+        log.info("[AssistantService] 채팅방 생성 서비스 - 완료: 내 집 확인 채팅방 생성, conversationId={}", conversation.getId());
+        return toCreateResponse(conversation, greeting, true);
+    }
+
+    // 체크한 증상 키 -> 체크리스트 문구 (시그널 guided_inspection의 label.en, 없으면 키를 읽기 좋게)
+    private List<String> symptomLabels(InspectionResult inspection) {
+        Map<String, String> labels = new LinkedHashMap<>();
+        if (inspection.getSignal() != null && inspection.getSignal().getGuidedInspection() != null) {
+            for (Map<String, Object> item : inspection.getSignal().getGuidedInspection()) {
+                Object label = item.get("label") instanceof Map<?, ?> map ? map.get("en") : item.get("label");
+                if (item.get("key") != null && label != null) {
+                    labels.put(String.valueOf(item.get("key")), String.valueOf(label));
+                }
+            }
+        }
+        return inspection.getSymptoms().stream()
+                .map(key -> labels.getOrDefault(key, key.replace('_', ' ').toLowerCase()))
+                .toList();
+    }
+
+    // 케이스 ID들 -> { 케이스 ID : 첫 번째 증거 사진 URL }
+    private Map<Long, String> findThumbnailUrls(List<Long> caseIds) {
+        if (caseIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, String> storageKeys = new LinkedHashMap<>();
+        for (Object[] row : conversationRepository.findEvidencePhotoKeys(caseIds)) {
+            storageKeys.putIfAbsent((Long) row[0], (String) row[1]);
+        }
+        return storageKeys.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> s3Uploader.getPresignedUrl(e.getValue())));
+    }
+
+    // 마지막 메시지가 Deaver 메시지인데 그 뒤로 채팅방을 열지 않았으면 안 읽음
+    private boolean hasUnread(Conversation conversation, Message lastMessage) {
+        return lastMessage != null
+                && lastMessage.getRole() == MessageRole.ASSISTANT
+                && (conversation.getLastReadAt() == null || lastMessage.getCreatedAt().isAfter(conversation.getLastReadAt()));
+    }
+
+    // 채팅방 제목 (CASE: 케이스 제목, INSPECTION: Possible Pests Issue, OTHER: 첫 사용자 메시지 앞 30자)
+    private String chatTitle(Conversation conversation, Message firstUserMessage) {
+        return switch (conversation.getType()) {
+            case CASE -> conversation.getCaseEntity() == null ? DEFAULT_TITLE : conversation.getCaseEntity().getTitle();
+            case INSPECTION -> conversation.getInspection() == null ? DEFAULT_TITLE
+                    : "Possible " + conversation.getInspection().getIssueCategory().getLabel() + " Issue";
+            case OTHER -> firstUserMessage != null
+                    ? truncate(firstUserMessage.getContent().strip(), TITLE_MAX_LENGTH)
+                    : DEFAULT_TITLE;
+        };
+    }
+
+    // 검사 결과 -> 채팅방 검사 요약 (INSPECTION 채팅방이 아니면 null)
+    private InspectionSummaryResponse toInspectionSummary(InspectionResult inspection) {
+        return inspection == null ? null : InspectionSummaryResponse.builder()
+                .inspectionId(inspection.getId())
+                .signalId(inspection.getSignal() == null ? null : inspection.getSignal().getId())
+                .issueCategory(inspection.getIssueCategory())
+                .build();
+    }
+
+    // 본인 채팅방 조회 (없으면 404, 남의 채팅방이면 403)
+    private Conversation findOwnedConversation(Long userId, Long conversationId) {
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> {
+                    log.warn("[AssistantService] 채팅방을 찾을 수 없습니다: conversationId={}", conversationId);
+                    return new CustomException(AssistantErrorCode.CONVERSATION_NOT_FOUND);
+                });
+        if (!conversation.getUser().getId().equals(userId)) {
+            log.warn("[AssistantService] 본인 채팅방이 아닙니다: userId={}, conversationId={}", userId, conversationId);
+            throw new CustomException(AssistantErrorCode.CONVERSATION_ACCESS_DENIED);
+        }
+        return conversation;
+    }
+
+    // 케이스 -> 채팅방 케이스 요약 (일반 채팅방이면 null)
+    private CaseSummaryResponse toCaseSummary(Case caseEntity) {
+        return caseEntity == null ? null : CaseSummaryResponse.builder()
+                .caseId(caseEntity.getId())
+                .caseNumber(caseEntity.getCaseNumber())
+                .title(caseEntity.getTitle())
+                .location(caseEntity.getLocation())
+                .statusBadge(statusBadge(caseEntity.getStage()))
+                .build();
+    }
 
     // 메시지 목록 -> { 대화 ID : 메시지 } Map
     private Map<Long, Message> toMapByConversationId(List<Message> messages) {
@@ -252,31 +508,29 @@ public class AssistantServiceImpl implements AssistantService {
     }
 
     // 케이스 대화 -> DTO (제목: Water Leak · C-006)
-    private CaseChatResponse toCaseChat(Conversation conversation, Message lastMessage) {
+    private CaseChatResponse toCaseChat(Conversation conversation, Message lastMessage, String thumbnailUrl) {
         Case caseEntity = conversation.getCaseEntity();
 
         return CaseChatResponse.builder()
                 .conversationId(conversation.getId())
                 .caseId(caseEntity.getId())
                 .title(issueLabel(caseEntity.getIssueType()) + " · " + caseEntity.getCaseNumber())
+                .thumbnailUrl(thumbnailUrl)
                 .lastMessage(preview(lastMessage))
                 .lastMessageAt(toInstant(lastMessage))
+                .hasUnread(hasUnread(conversation, lastMessage))
                 .build();
     }
 
-    // 일반 대화 -> DTO (제목: 첫 사용자 메시지 앞 30자)
+    // 일반·내 집 확인 대화 -> DTO (제목: 첫 사용자 메시지 앞 30자 / Possible Pests Issue)
     private OtherChatResponse toOtherChat(Conversation conversation, Message lastMessage, Message firstUserMessage) {
-
-        // 첫 사용자 메시지 앞 30자, 없으면 기본 제목
-        String title = firstUserMessage != null
-                ? truncate(firstUserMessage.getContent().strip(), TITLE_MAX_LENGTH)
-                : DEFAULT_TITLE;
-
         return OtherChatResponse.builder()
                 .conversationId(conversation.getId())
-                .title(title)
+                .type(conversation.getType())
+                .title(chatTitle(conversation, firstUserMessage))
                 .lastMessage(preview(lastMessage))
                 .lastMessageAt(toInstant(lastMessage))
+                .hasUnread(hasUnread(conversation, lastMessage))
                 .build();
     }
 
@@ -322,15 +576,10 @@ public class AssistantServiceImpl implements AssistantService {
 
     // 채팅방 생성 결과 -> DTO
     private ChatRoomCreateResponse toCreateResponse(Conversation conversation, Message greeting, boolean created) {
-        Case caseEntity = conversation.getCaseEntity();
+        CaseSummaryResponse caseSummary = toCaseSummary(conversation.getCaseEntity());
 
-        CaseSummaryResponse caseSummary = caseEntity == null ? null : CaseSummaryResponse.builder()
-                .caseId(caseEntity.getId())
-                .caseNumber(caseEntity.getCaseNumber())
-                .title(caseEntity.getTitle())
-                .location(caseEntity.getLocation())
-                .statusBadge(statusBadge(caseEntity.getStage()))
-                .build();
+        // 채팅방에 들어가며 인사 메시지를 바로 보므로 읽음 처리
+        conversation.markRead();
 
         GreetingResponse greetingResponse = greeting == null ? null : GreetingResponse.builder()
                 .messageId(greeting.getId())
@@ -342,6 +591,7 @@ public class AssistantServiceImpl implements AssistantService {
                 .conversationId(conversation.getId())
                 .type(conversation.getType())
                 .caseSummary(caseSummary)
+                .inspection(toInspectionSummary(conversation.getInspection()))
                 .greeting(greetingResponse)
                 .created(created)
                 .build();
