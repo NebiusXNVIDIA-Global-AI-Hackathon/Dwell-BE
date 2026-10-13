@@ -54,4 +54,17 @@ public class Post extends BaseTimeEntity {
         this.content = content;
         this.floorBand = floorBand;
     }
+
+    // 게시물 수정 (null이 아닌 값만 변경)
+    public void update(Board board, String title, String content) {
+        if (board != null) {
+            this.board = board;
+        }
+        if (title != null) {
+            this.title = title;
+        }
+        if (content != null) {
+            this.content = content;
+        }
+    }
 }

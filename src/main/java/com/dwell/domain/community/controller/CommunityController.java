@@ -1,7 +1,9 @@
 package com.dwell.domain.community.controller;
 
 import com.dwell.domain.community.dto.request.PostCreateRequest;
+import com.dwell.domain.community.dto.request.PostUpdateRequest;
 import com.dwell.domain.community.dto.response.PostCreateResponse;
+import com.dwell.domain.community.dto.response.PostUpdateResponse;
 import com.dwell.domain.community.service.CommunityService;
 import com.dwell.global.common.BaseResponse;
 import com.dwell.global.security.CustomUserDetails;
@@ -13,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -55,5 +58,21 @@ public class CommunityController {
 
         // 응답 반환
         return ResponseEntity.noContent().build();
+    }
+
+    // 게시물 수정 컨트롤러
+    @Operation(summary = "게시물 수정",
+            description = "내 게시물에서 보낸 필드만 수정합니다. 태그·이미지는 보내면 통째로 교체되고, 빠진 이미지는 파일도 삭제됩니다.")
+    @PatchMapping("/posts/{postId}")
+    public ResponseEntity<BaseResponse<PostUpdateResponse>> updatePost(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable Long postId,
+            @Valid @RequestBody PostUpdateRequest request) {
+
+        // 게시물 수정 서비스 호출
+        PostUpdateResponse response = communityService.updatePost(postId, userDetails.getUser().getId(), request);
+
+        // 응답 변환
+        return ResponseEntity.ok(BaseResponse.success(200, "Post updated.", response));
     }
 }
