@@ -4,6 +4,7 @@ import com.dwell.domain.building.entity.Building;
 import com.dwell.domain.building.entity.UserPlace;
 import com.dwell.domain.building.repository.UserPlaceRepository;
 import com.dwell.domain.community.dto.request.PostLikeRequest;
+import com.dwell.domain.community.dto.request.ReplyCreateRequest;
 import com.dwell.domain.community.dto.response.PostDetailResponse;
 import com.dwell.domain.community.dto.response.PostLikeResponse;
 import com.dwell.domain.community.dto.response.ReplyResponse;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -280,6 +282,64 @@ class CommunityServiceImplTest {
 
         assertThat(response.getAuthor().getLabel()).isEqualTo("Deleted user");
         assertThat(response.getAuthor().getIsMe()).isFalse();
+    }
+
+    @Test
+    @DisplayName("댓글: 다른 건물 게시물이면 POST_NOT_FOUND")
+    void createReplyOtherBuilding() {
+        Post post = postIn(building(10L));
+        UserPlace place = placeIn(building(20L));
+        given(postRepository.findById(40L)).willReturn(Optional.of(post));
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.of(place));
+
+        assertThatThrownBy(() -> communityService.createReply(40L, 1L, replyRequest("hi")))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(CommunityErrorCode.POST_NOT_FOUND);
+        verify(replyRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("댓글: 집 등록이 없으면 POST_NOT_FOUND")
+    void createReplyWithoutPlace() {
+        Post post = mock(Post.class);
+        given(postRepository.findById(40L)).willReturn(Optional.of(post));
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> communityService.createReply(40L, 1L, replyRequest("hi")))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(CommunityErrorCode.POST_NOT_FOUND);
+        verify(replyRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("댓글: 앞뒤 공백을 지우고 작성자 층을 층 구간으로 저장 (8층 -> UPPER)")
+    void createReply() {
+        Post post = postIn(building(10L));
+        User me = mock(User.class);
+        UserPlace place = placeIn(building(10L));
+        given(place.getUser()).willReturn(me);
+        given(place.getFloor()).willReturn(8);
+        given(postRepository.findById(40L)).willReturn(Optional.of(post));
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.of(place));
+        Reply saved = mock(Reply.class);
+        given(saved.getId()).willReturn(78L);
+        given(replyRepository.save(any(Reply.class))).willReturn(saved);
+
+        Long replyId = communityService.createReply(40L, 1L, replyRequest("  Same here.  ")).getReplyId();
+
+        ArgumentCaptor<Reply> captor = ArgumentCaptor.forClass(Reply.class);
+        verify(replyRepository).save(captor.capture());
+        assertThat(captor.getValue().getPost()).isSameAs(post);
+        assertThat(captor.getValue().getUser()).isSameAs(me);
+        assertThat(captor.getValue().getContent()).isEqualTo("Same here.");
+        assertThat(captor.getValue().getFloorBand()).isEqualTo(FloorBand.UPPER);
+        assertThat(replyId).isEqualTo(78L);
+    }
+
+    private ReplyCreateRequest replyRequest(String content) {
+        ReplyCreateRequest request = new ReplyCreateRequest();
+        request.setContent(content);
+        return request;
     }
 
     private Reply replyOf(User user, FloorBand floorBand) {

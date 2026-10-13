@@ -3,10 +3,12 @@ package com.dwell.domain.community.controller;
 import com.dwell.domain.community.dto.request.PostCreateRequest;
 import com.dwell.domain.community.dto.request.PostLikeRequest;
 import com.dwell.domain.community.dto.request.PostUpdateRequest;
+import com.dwell.domain.community.dto.request.ReplyCreateRequest;
 import com.dwell.domain.community.dto.response.PostCreateResponse;
 import com.dwell.domain.community.dto.response.PostDetailResponse;
 import com.dwell.domain.community.dto.response.PostLikeResponse;
 import com.dwell.domain.community.dto.response.PostUpdateResponse;
+import com.dwell.domain.community.dto.response.ReplyCreateResponse;
 import com.dwell.domain.community.service.CommunityService;
 import com.dwell.global.common.BaseResponse;
 import com.dwell.global.security.CustomUserDetails;
@@ -94,6 +96,22 @@ public class CommunityController {
 
         // 응답 변환
         return ResponseEntity.ok(BaseResponse.success(200, "Post retrieved.", response));
+    }
+
+    // 댓글 작성 컨트롤러
+    @Operation(summary = "댓글 작성",
+            description = "내 건물 게시물에 댓글을 작성합니다 (1~500자). 다른 건물 게시물은 404입니다.")
+    @PostMapping("/posts/{postId}/replies")
+    public ResponseEntity<BaseResponse<ReplyCreateResponse>> createReply(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable Long postId,
+            @Valid @RequestBody ReplyCreateRequest request) {
+
+        // 댓글 작성 서비스 호출
+        ReplyCreateResponse response = communityService.createReply(postId, userDetails.getUser().getId(), request);
+
+        // 응답 변환
+        return ResponseEntity.status(HttpStatus.CREATED).body(BaseResponse.success(201, "Reply created.", response));
     }
 
     // 좋아요 / 좋아요 취소 컨트롤러

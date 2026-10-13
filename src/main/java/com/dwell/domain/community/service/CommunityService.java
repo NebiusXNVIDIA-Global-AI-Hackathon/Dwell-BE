@@ -3,10 +3,12 @@ package com.dwell.domain.community.service;
 import com.dwell.domain.community.dto.request.PostCreateRequest;
 import com.dwell.domain.community.dto.request.PostLikeRequest;
 import com.dwell.domain.community.dto.request.PostUpdateRequest;
+import com.dwell.domain.community.dto.request.ReplyCreateRequest;
 import com.dwell.domain.community.dto.response.PostCreateResponse;
 import com.dwell.domain.community.dto.response.PostDetailResponse;
 import com.dwell.domain.community.dto.response.PostLikeResponse;
 import com.dwell.domain.community.dto.response.PostUpdateResponse;
+import com.dwell.domain.community.dto.response.ReplyCreateResponse;
 
 public interface CommunityService {
 
@@ -53,6 +55,17 @@ public interface CommunityService {
      * @return PostDetailResponse(postId, board, title, content, author, tags, images, likeCount, likedByMe, createdAt, replies)
      */
     PostDetailResponse getPost(Long postId, Long userId);
+
+    /**
+     * [댓글 작성 서비스]
+     * @author 김민호
+     * @description: 내 건물 게시물에 댓글을 작성합니다. 작성자 층은 Lower / Middle / Upper Floor로만 저장합니다.
+     *               다른 건물 게시물이거나 집 등록이 없으면 없는 게시물로 처리합니다.
+     *
+     * @request postId, userId, ReplyCreateRequest(content)
+     * @return ReplyCreateResponse(replyId)
+     */
+    ReplyCreateResponse createReply(Long postId, Long userId, ReplyCreateRequest request);
 
     /**
      * [좋아요 / 좋아요 취소 서비스]
