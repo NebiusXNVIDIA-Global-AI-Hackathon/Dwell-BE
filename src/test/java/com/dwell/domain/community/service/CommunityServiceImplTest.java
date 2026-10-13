@@ -4,17 +4,24 @@ import com.dwell.domain.building.entity.Building;
 import com.dwell.domain.building.entity.UserPlace;
 import com.dwell.domain.building.repository.UserPlaceRepository;
 import com.dwell.domain.community.dto.request.PostLikeRequest;
+import com.dwell.domain.community.dto.response.PostDetailResponse;
 import com.dwell.domain.community.dto.response.PostLikeResponse;
+import com.dwell.domain.community.dto.response.ReplyResponse;
+import com.dwell.domain.community.entity.Reply;
+import com.dwell.domain.community.enums.Board;
 import com.dwell.domain.community.entity.Post;
 import com.dwell.domain.community.exception.CommunityErrorCode;
 import com.dwell.domain.community.repository.PostImageRepository;
 import com.dwell.domain.community.repository.PostLikeRepository;
 import com.dwell.domain.community.repository.PostRepository;
 import com.dwell.domain.community.repository.PostTagRepository;
+import com.dwell.domain.community.repository.ReplyRepository;
 import com.dwell.domain.community.repository.TagRepository;
 import com.dwell.domain.file.entity.File;
 import com.dwell.domain.file.repository.FileRepository;
 import com.dwell.domain.file.service.FileService;
+import com.dwell.domain.file.service.S3Uploader;
+import com.dwell.global.common.enums.FloorBand;
 import com.dwell.domain.user.entity.User;
 import com.dwell.global.exception.CustomException;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,18 +55,22 @@ class CommunityServiceImplTest {
     @Mock
     private PostLikeRepository postLikeRepository;
     @Mock
+    private ReplyRepository replyRepository;
+    @Mock
     private UserPlaceRepository userPlaceRepository;
     @Mock
     private FileRepository fileRepository;
     @Mock
     private FileService fileService;
+    @Mock
+    private S3Uploader s3Uploader;
 
     private CommunityServiceImpl communityService;
 
     @BeforeEach
     void setUp() {
         communityService = new CommunityServiceImpl(postRepository, tagRepository, postTagRepository, postImageRepository,
-                postLikeRepository, userPlaceRepository, fileRepository, fileService);
+                postLikeRepository, replyRepository, userPlaceRepository, fileRepository, fileService, s3Uploader);
     }
 
     @Test
@@ -184,6 +195,98 @@ class CommunityServiceImplTest {
         verify(postLikeRepository, never()).insertIgnore(any(), any());
         assertThat(response.isLiked()).isFalse();
         assertThat(response.getLikeCount()).isEqualTo(8L);
+    }
+
+    @Test
+    @DisplayName("상세: 다른 건물 게시물이면 POST_NOT_FOUND")
+    void getPostOtherBuilding() {
+        Post post = postIn(building(10L));
+        UserPlace place = placeIn(building(20L));
+        given(postRepository.findById(40L)).willReturn(Optional.of(post));
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.of(place));
+
+        assertThatThrownBy(() -> communityService.getPost(40L, 1L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(CommunityErrorCode.POST_NOT_FOUND);
+        verifyNoInteractions(replyRepository, s3Uploader);
+    }
+
+    @Test
+    @DisplayName("상세: 작성자는 층 구간 문구, 태그는 #, 이미지는 presigned URL, 댓글은 닉네임·이니셜")
+    void getPost() {
+        User me = author(1L);
+        Post post = postIn(building(10L));
+        given(post.getId()).willReturn(40L);
+        given(post.getUser()).willReturn(me);
+        given(post.getBoard()).willReturn(Board.FREE);
+        given(post.getTitle()).willReturn("Floor 5 — our leak came back after repair");
+        given(post.getContent()).willReturn("Same line as yours?");
+        given(post.getFloorBand()).willReturn(FloorBand.MIDDLE);
+        UserPlace place = placeIn(building(10L));
+        given(postRepository.findById(40L)).willReturn(Optional.of(post));
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.of(place));
+
+        given(postTagRepository.findTagNamesByPost(post)).willReturn(List.of("ceilingleak", "floor5"));
+        File image = mock(File.class);
+        given(image.getId()).willReturn(130L);
+        given(image.getStorageKey()).willReturn("post_image/1/abc");
+        given(postImageRepository.findFilesByPostOrderBySortOrder(post)).willReturn(List.of(image));
+        given(s3Uploader.getPresignedUrl("post_image/1/abc")).willReturn("https://signed");
+
+        User neighbor = author(2L);
+        given(neighbor.getNickname()).willReturn("GuiltyMo");
+        Reply reply = replyOf(neighbor, FloorBand.LOWER);
+        Reply deletedReply = replyOf(null, FloorBand.UPPER);
+        given(replyRepository.findAllByPostWithUser(post)).willReturn(List.of(reply, deletedReply));
+
+        given(postLikeRepository.countByIdPostId(40L)).willReturn(8L);
+        given(postLikeRepository.existsByIdPostIdAndIdUserId(40L, 1L)).willReturn(false);
+
+        PostDetailResponse response = communityService.getPost(40L, 1L);
+
+        assertThat(response.getAuthor().getLabel()).isEqualTo("Middle Floor neighbor");
+        assertThat(response.getAuthor().getIsMe()).isTrue();
+        assertThat(response.getTags()).containsExactly("#ceilingleak", "#floor5");
+        assertThat(response.getImages()).singleElement()
+                .satisfies(i -> {
+                    assertThat(i.getFileId()).isEqualTo(130L);
+                    assertThat(i.getUrl()).isEqualTo("https://signed");
+                });
+        assertThat(response.getLikeCount()).isEqualTo(8L);
+        assertThat(response.isLikedByMe()).isFalse();
+
+        ReplyResponse first = response.getReplies().get(0);
+        assertThat(first.getAuthor().getNickname()).isEqualTo("GuiltyMo");
+        assertThat(first.getAuthor().getInitials()).isEqualTo("GM");
+        assertThat(first.getAuthor().getFloorBand()).isEqualTo(FloorBand.LOWER);
+        assertThat(first.getAuthor().getIsMe()).isFalse();
+
+        ReplyResponse deleted = response.getReplies().get(1);
+        assertThat(deleted.getAuthor().getNickname()).isEqualTo("Deleted user");
+        assertThat(deleted.getAuthor().getInitials()).isNull();
+        assertThat(deleted.getAuthor().getIsMe()).isFalse();
+    }
+
+    @Test
+    @DisplayName("상세: 탈퇴한 작성자의 게시물은 Deleted user, isMe=false")
+    void getPostOfDeletedUser() {
+        Post post = postIn(building(10L));
+        given(post.getUser()).willReturn(null);
+        UserPlace place = placeIn(building(10L));
+        given(postRepository.findById(40L)).willReturn(Optional.of(post));
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.of(place));
+
+        PostDetailResponse response = communityService.getPost(40L, 1L);
+
+        assertThat(response.getAuthor().getLabel()).isEqualTo("Deleted user");
+        assertThat(response.getAuthor().getIsMe()).isFalse();
+    }
+
+    private Reply replyOf(User user, FloorBand floorBand) {
+        Reply reply = mock(Reply.class);
+        given(reply.getUser()).willReturn(user);
+        given(reply.getFloorBand()).willReturn(floorBand);
+        return reply;
     }
 
     private PostLikeRequest likeRequest(boolean liked) {

@@ -4,6 +4,7 @@ import com.dwell.domain.community.dto.request.PostCreateRequest;
 import com.dwell.domain.community.dto.request.PostLikeRequest;
 import com.dwell.domain.community.dto.request.PostUpdateRequest;
 import com.dwell.domain.community.dto.response.PostCreateResponse;
+import com.dwell.domain.community.dto.response.PostDetailResponse;
 import com.dwell.domain.community.dto.response.PostLikeResponse;
 import com.dwell.domain.community.dto.response.PostUpdateResponse;
 
@@ -41,6 +42,17 @@ public interface CommunityService {
      * @return PostUpdateResponse(postId)
      */
     PostUpdateResponse updatePost(Long postId, Long userId, PostUpdateRequest request);
+
+    /**
+     * [게시물 상세 서비스]
+     * @author 김민호
+     * @description: 내 건물 게시물의 상세(태그·이미지·좋아요·댓글)를 조회합니다.
+     *               다른 건물 게시물은 없는 게시물로 처리하고, 작성자는 층 구간(Middle Floor neighbor)으로만 보여줍니다.
+     *
+     * @request postId, userId
+     * @return PostDetailResponse(postId, board, title, content, author, tags, images, likeCount, likedByMe, createdAt, replies)
+     */
+    PostDetailResponse getPost(Long postId, Long userId);
 
     /**
      * [좋아요 / 좋아요 취소 서비스]

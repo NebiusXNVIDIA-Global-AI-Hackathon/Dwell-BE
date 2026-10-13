@@ -4,6 +4,7 @@ import com.dwell.domain.community.dto.request.PostCreateRequest;
 import com.dwell.domain.community.dto.request.PostLikeRequest;
 import com.dwell.domain.community.dto.request.PostUpdateRequest;
 import com.dwell.domain.community.dto.response.PostCreateResponse;
+import com.dwell.domain.community.dto.response.PostDetailResponse;
 import com.dwell.domain.community.dto.response.PostLikeResponse;
 import com.dwell.domain.community.dto.response.PostUpdateResponse;
 import com.dwell.domain.community.service.CommunityService;
@@ -17,6 +18,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -77,6 +79,21 @@ public class CommunityController {
 
         // 응답 변환
         return ResponseEntity.ok(BaseResponse.success(200, "Post updated.", response));
+    }
+
+    // 게시물 상세 컨트롤러
+    @Operation(summary = "게시물 상세",
+            description = "내 건물 게시물의 상세와 댓글을 조회합니다. 이미지 URL은 10분 동안 유효합니다. 다른 건물 게시물은 404입니다.")
+    @GetMapping("/posts/{postId}")
+    public ResponseEntity<BaseResponse<PostDetailResponse>> getPost(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable Long postId) {
+
+        // 게시물 상세 서비스 호출
+        PostDetailResponse response = communityService.getPost(postId, userDetails.getUser().getId());
+
+        // 응답 변환
+        return ResponseEntity.ok(BaseResponse.success(200, "Post retrieved.", response));
     }
 
     // 좋아요 / 좋아요 취소 컨트롤러
