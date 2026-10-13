@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
 import java.util.Collection;
+import java.util.List;
 
 public interface PostRepository extends JpaRepository<Post, Long> {
 
@@ -33,6 +34,9 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             nativeQuery = true)
     Page<Long> findIdsInBuilding(Long buildingId, String board, String q, String tag,
                                  boolean recommended, Collection<String> keywords, Pageable pageable);
+
+    // 검색창 제목 추천 (내 건물, 제목에 포함, 최신 순 5개)
+    List<Post> findTop5ByBuildingIdAndTitleContainingIgnoreCaseOrderByCreatedAtDescIdDesc(Long buildingId, String title);
 
     // 태그 검색 결과 중 내 케이스 관련 태그도 달린 글 수 ("3 related to your case")
     @Query(value = "select count(*) from post p "

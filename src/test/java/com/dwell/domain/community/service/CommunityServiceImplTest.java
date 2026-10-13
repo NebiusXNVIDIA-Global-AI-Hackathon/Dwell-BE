@@ -13,6 +13,7 @@ import com.dwell.domain.community.entity.Reply;
 import com.dwell.domain.community.enums.Board;
 import com.dwell.domain.community.enums.BoardFilter;
 import com.dwell.domain.community.dto.response.PostListResponse;
+import com.dwell.domain.community.dto.response.TagSuggestionResponse;
 import com.dwell.global.common.enums.IssueCategory;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -254,6 +255,49 @@ class CommunityServiceImplTest {
         ArgumentCaptor<List<String>> keywords = ArgumentCaptor.forClass(List.class);
         verify(postRepository).findIdsInBuilding(any(), any(), any(), any(), anyBoolean(), keywords.capture(), any());
         assertThat(keywords.getValue()).contains("roaches", "pests");
+    }
+
+    @Test
+    @DisplayName("태그 자동완성: 집 등록이 없으면 PLACE_NOT_REGISTERED")
+    void suggestTagsWithoutPlace() {
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> communityService.suggestTags(1L, "ceil", false))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(CommunityErrorCode.PLACE_NOT_REGISTERED);
+        verifyNoInteractions(postTagRepository);
+    }
+
+    @Test
+    @DisplayName("태그 자동완성: 입력을 정리하고 LIKE 특수문자를 이스케이프, 첫 태그가 입력과 같으면 exactMatch")
+    void suggestTags() {
+        UserPlace place = placeIn(building(10L));
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.of(place));
+        given(postTagRepository.findTagCountsInBuilding(10L, "water\\_", "water_", PageRequest.of(0, 10)))
+                .willReturn(List.<Object[]>of(new Object[]{"water_", 2L}, new Object[]{"water_pipe", 1L}));
+
+        TagSuggestionResponse response = communityService.suggestTags(1L, "#Water_", false);
+
+        assertThat(response.getItems()).extracting("tag").containsExactly("#water_", "#water_pipe");
+        assertThat(response.isExactMatch()).isTrue();
+        assertThat(response.getTitles()).isNull();
+        verifyNoInteractions(postRepository);
+    }
+
+    @Test
+    @DisplayName("태그 자동완성: withTitles면 # 뺀 입력으로 제목 추천, 같은 태그가 없으면 exactMatch=false")
+    void suggestTagsWithTitles() {
+        UserPlace place = placeIn(building(10L));
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.of(place));
+        given(postTagRepository.findTagCountsInBuilding(any(), any(), any(), any()))
+                .willReturn(List.<Object[]>of(new Object[]{"ceilingleak", 24L}));
+        given(postRepository.findTop5ByBuildingIdAndTitleContainingIgnoreCaseOrderByCreatedAtDescIdDesc(10L, "ceil"))
+                .willReturn(List.of());
+
+        TagSuggestionResponse response = communityService.suggestTags(1L, "#ceil", true);
+
+        assertThat(response.isExactMatch()).isFalse();
+        assertThat(response.getTitles()).isEmpty();
     }
 
     @Test

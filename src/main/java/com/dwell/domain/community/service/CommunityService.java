@@ -7,6 +7,7 @@ import com.dwell.domain.community.dto.request.ReplyCreateRequest;
 import com.dwell.domain.community.dto.response.PostCreateResponse;
 import com.dwell.domain.community.dto.response.PostDetailResponse;
 import com.dwell.domain.community.dto.response.PostListResponse;
+import com.dwell.domain.community.dto.response.TagSuggestionResponse;
 import com.dwell.domain.community.enums.BoardFilter;
 import com.dwell.domain.community.dto.response.PostLikeResponse;
 import com.dwell.domain.community.dto.response.PostUpdateResponse;
@@ -58,6 +59,18 @@ public interface CommunityService {
      * @return PostListResponse(tagSummary, content, page, size, totalElements, hasNext)
      */
     PostListResponse getPosts(Long userId, BoardFilter board, String q, String tag, int page, int size);
+
+    /**
+     * [태그 자동완성 서비스]
+     * @author 김민호
+     * @description: 내 건물 게시물에 달린 태그 중 입력으로 시작하는 태그를 추천합니다 (입력과 같은 태그 먼저, 나머지는 글 많은 순, 최대 10개).
+     *               입력과 같은 태그가 없으면 exactMatch=false (클라가 + Create new tag 노출, 실제 생성은 게시물 작성 시).
+     *               withTitles=true(검색창)면 제목에 입력이 들어간 글도 최신 순 5개 함께 줍니다.
+     *
+     * @request userId, q, withTitles
+     * @return TagSuggestionResponse(items, exactMatch, titles)
+     */
+    TagSuggestionResponse suggestTags(Long userId, String q, boolean withTitles);
 
     /**
      * [게시물 상세 서비스]

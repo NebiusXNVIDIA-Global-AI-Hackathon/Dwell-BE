@@ -18,6 +18,9 @@ import com.dwell.domain.community.dto.response.PostUpdateResponse;
 import com.dwell.domain.community.dto.response.ReplyAuthorResponse;
 import com.dwell.domain.community.dto.response.ReplyCreateResponse;
 import com.dwell.domain.community.dto.response.ReplyResponse;
+import com.dwell.domain.community.dto.response.TagCountResponse;
+import com.dwell.domain.community.dto.response.TagSuggestionResponse;
+import com.dwell.domain.community.dto.response.TitleSuggestionResponse;
 import com.dwell.domain.community.dto.response.TagSummaryResponse;
 import com.dwell.domain.community.entity.Post;
 import com.dwell.domain.community.entity.PostImage;
@@ -66,6 +69,7 @@ public class CommunityServiceImpl implements CommunityService {
     private static final String DEFAULT_NICKNAME = "Neighbor"; // 닉네임 미설정 사용자
     private static final int PREVIEW_LENGTH = 100;
     private static final int MAX_PAGE_SIZE = 50;
+    private static final int MAX_TAG_SUGGESTIONS = 10;
 
     // 케이스 이슈 카테고리 -> 관련 태그 (추천 글·"related to your case" 판단용, 태그는 소문자·# 없이 저장됨)
     private static final Map<IssueCategory, List<String>> ISSUE_TAG_KEYWORDS = Map.of(
@@ -270,6 +274,58 @@ public class CommunityServiceImpl implements CommunityService {
                 .build();
     }
 
+    // 태그 자동완성 서비스
+    @Override
+    public TagSuggestionResponse suggestTags(Long userId, String q, boolean withTitles) {
+
+        log.info("[CommunityService] 태그 자동완성 서비스 - 시작: userId={}, q={}, withTitles={}", userId, q, withTitles);
+
+        // 내 집 조회 (게시판은 건물 단위)
+        UserPlace place = userPlaceRepository.findByUserId(userId)
+                .orElseThrow(() -> {
+                    log.warn("[CommunityService] 태그 자동완성 서비스 - 등록된 집이 없습니다: userId={}", userId);
+                    return new CustomException(CommunityErrorCode.PLACE_NOT_REGISTERED);
+                });
+        Long buildingId = place.getBuilding().getId();
+
+        // 입력 정리 ("#Ceil" -> "ceil", 비어 있으면 건물에서 많이 쓰인 태그)
+        String tagName = normalizeTags(q == null ? null : List.of(q)).stream().findFirst().orElse("");
+
+        // 태그 추천 (입력과 같은 태그 먼저 -> 글 많은 순)
+        List<TagCountResponse> items = postTagRepository.findTagCountsInBuilding(buildingId, escapeLike(tagName), tagName,
+                        PageRequest.of(0, MAX_TAG_SUGGESTIONS)).stream()
+                .map(row -> TagCountResponse.builder()
+                        .tag("#" + row[0])
+                        .postCount((Long) row[1])
+                        .build())
+                .toList();
+        boolean exactMatch = !tagName.isEmpty() && !items.isEmpty() && items.get(0).getTag().equals("#" + tagName);
+
+        // 제목 추천 (검색창에서만, 입력이 없으면 빈 목록)
+        List<TitleSuggestionResponse> titles = null;
+        if (withTitles) {
+            String title = q == null ? "" : q.replace("#", "").strip();
+            titles = title.isEmpty() ? List.of()
+                    : postRepository.findTop5ByBuildingIdAndTitleContainingIgnoreCaseOrderByCreatedAtDescIdDesc(buildingId, title)
+                    .stream()
+                    .map(post -> TitleSuggestionResponse.builder()
+                            .postId(post.getId())
+                            .title(post.getTitle())
+                            .board(post.getBoard())
+                            .floorBand(post.getFloorBand())
+                            .build())
+                    .toList();
+        }
+
+        log.info("[CommunityService] 태그 자동완성 서비스 - 완료: userId={}, tags={}, exactMatch={}", userId, items.size(), exactMatch);
+
+        return TagSuggestionResponse.builder()
+                .items(items)
+                .exactMatch(exactMatch)
+                .titles(titles)
+                .build();
+    }
+
     // 게시물 상세 서비스
     @Override
     public PostDetailResponse getPost(Long postId, Long userId) {
@@ -435,6 +491,11 @@ public class CommunityServiceImpl implements CommunityService {
     @SuppressWarnings("unchecked")
     private <V> Map<Long, V> toMap(List<Object[]> rows) {
         return rows.stream().collect(Collectors.toMap(row -> (Long) row[0], row -> (V) row[1]));
+    }
+
+    // LIKE 특수문자 이스케이프 (태그는 공백·#만 지워서 %, _가 남을 수 있음)
+    private String escapeLike(String value) {
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     // 내용 미리보기 (줄바꿈은 공백으로, 100자 넘으면 …)
