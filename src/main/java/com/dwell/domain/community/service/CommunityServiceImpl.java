@@ -3,7 +3,9 @@ package com.dwell.domain.community.service;
 import com.dwell.domain.building.entity.UserPlace;
 import com.dwell.domain.building.repository.UserPlaceRepository;
 import com.dwell.domain.community.dto.request.PostCreateRequest;
+import com.dwell.domain.community.dto.request.PostUpdateRequest;
 import com.dwell.domain.community.dto.response.PostCreateResponse;
+import com.dwell.domain.community.dto.response.PostUpdateResponse;
 import com.dwell.domain.community.entity.Post;
 import com.dwell.domain.community.entity.PostImage;
 import com.dwell.domain.community.entity.PostTag;
@@ -70,7 +72,7 @@ public class CommunityServiceImpl implements CommunityService {
         }
 
         // 이미지 확인 (내가 올린 게시물용 이미지, 다른 글에 쓰이지 않은 것)
-        List<File> images = findImages(userId, request.getImageFileIds());
+        List<File> images = findImages(userId, request.getImageFileIds(), null);
 
         // 게시물 저장
         Post post = postRepository.save(Post.builder()
@@ -106,18 +108,8 @@ public class CommunityServiceImpl implements CommunityService {
 
         log.info("[CommunityService] 게시물 삭제 서비스 - 시작: postId={}, userId={}", postId, userId);
 
-        // 게시물 조회
-        Post post = postRepository.findById(postId)
-                .orElseThrow(() -> {
-                    log.warn("[CommunityService] 게시물 삭제 서비스 - 존재하지 않는 게시물: postId={}", postId);
-                    return new CustomException(CommunityErrorCode.POST_NOT_FOUND);
-                });
-
-        // 내 게시물이 아니면 X (탈퇴한 작성자의 글은 user가 NULL)
-        if (post.getUser() == null || !post.getUser().getId().equals(userId)) {
-            log.warn("[CommunityService] 게시물 삭제 서비스 - 타인 게시물 삭제 시도: postId={}, userId={}", postId, userId);
-            throw new CustomException(CommunityErrorCode.NOT_POST_AUTHOR);
-        }
+        // 내 게시물 조회
+        Post post = findOwnedPost(postId, userId);
 
         // 첨부 이미지 파일 조회 (파일은 DB에서 자동으로 지워지지 않음)
         List<File> files = postImageRepository.findFilesByPost(post);
@@ -131,9 +123,75 @@ public class CommunityServiceImpl implements CommunityService {
         log.info("[CommunityService] 게시물 삭제 서비스 - 완료: postId={}, files={}", postId, files.size());
     }
 
+    // 게시물 수정 서비스
+    @Override
+    @Transactional
+    public PostUpdateResponse updatePost(Long postId, Long userId, PostUpdateRequest request) {
+
+        log.info("[CommunityService] 게시물 수정 서비스 - 시작: postId={}, userId={}", postId, userId);
+
+        // 내 게시물 조회
+        Post post = findOwnedPost(postId, userId);
+
+        // 제목·내용·게시판 수정 (보낸 값만)
+        post.update(request.getBoard(),
+                request.getTitle() == null ? null : request.getTitle().strip(),
+                request.getContent() == null ? null : request.getContent().strip());
+
+        // 태그 교체 (보냈을 때만)
+        if (request.getTags() != null) {
+            List<String> tagNames = normalizeTags(request.getTags());
+            if (tagNames.size() > MAX_TAGS) {
+                log.warn("[CommunityService] 게시물 수정 서비스 - 태그가 너무 많습니다: count={}", tagNames.size());
+                throw new CustomException(CommunityErrorCode.TOO_MANY_TAGS);
+            }
+            postTagRepository.deleteAllByPost(post);
+            for (Tag tag : findOrCreateTags(tagNames)) {
+                postTagRepository.save(PostTag.builder().post(post).tag(tag).build());
+            }
+        }
+
+        // 이미지 교체 (보냈을 때만, 요청 순서대로)
+        if (request.getImageFileIds() != null) {
+            List<File> images = findImages(userId, request.getImageFileIds(), post);
+
+            // 빠진 이미지 파일 (연결을 지운 뒤 파일 삭제)
+            List<File> removed = postImageRepository.findFilesByPost(post).stream()
+                    .filter(f -> !images.contains(f))
+                    .toList();
+
+            postImageRepository.deleteAllByPost(post);
+            for (int i = 0; i < images.size(); i++) {
+                postImageRepository.save(PostImage.builder().post(post).file(images.get(i)).sortOrder(i).build());
+            }
+            fileService.deleteFiles(removed);
+        }
+
+        log.info("[CommunityService] 게시물 수정 서비스 - 완료: postId={}", postId);
+
+        return PostUpdateResponse.builder()
+                .postId(post.getId())
+                .build();
+    }
+
 
 
     // ========== 헬퍼 함수 ==========
+
+    // 내 게시물 조회 (없으면 404, 남의 글이면 403 / 탈퇴한 작성자의 글은 user가 NULL)
+    private Post findOwnedPost(Long postId, Long userId) {
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> {
+                    log.warn("[CommunityService] 게시물 조회 실패 - 존재하지 않는 게시물: postId={}", postId);
+                    return new CustomException(CommunityErrorCode.POST_NOT_FOUND);
+                });
+
+        if (post.getUser() == null || !post.getUser().getId().equals(userId)) {
+            log.warn("[CommunityService] 게시물 조회 실패 - 타인 게시물 접근 시도: postId={}, userId={}", postId, userId);
+            throw new CustomException(CommunityErrorCode.NOT_POST_AUTHOR);
+        }
+        return post;
+    }
 
     // 태그 정리 ("#Pipe Burst" -> "pipeburst"), 빈 값·중복 제거
     private List<String> normalizeTags(List<String> tags) {
@@ -164,8 +222,8 @@ public class CommunityServiceImpl implements CommunityService {
         return tags;
     }
 
-    // 이미지 파일 조회 + 검증 (요청 순서 유지)
-    private List<File> findImages(Long userId, List<Long> fileIds) {
+    // 이미지 파일 조회 + 검증 (요청 순서 유지, 수정 중인 게시물에 이미 붙은 이미지는 허용)
+    private List<File> findImages(Long userId, List<Long> fileIds, Post editingPost) {
         if (fileIds == null || fileIds.isEmpty()) {
             return List.of();
         }
@@ -176,9 +234,11 @@ public class CommunityServiceImpl implements CommunityService {
         boolean valid = files.size() == ids.size()
                 && files.values().stream().allMatch(f ->
                         f.getUser().getId().equals(userId) && f.getPurpose() == FilePurpose.POST_IMAGE)
-                && !postImageRepository.existsByFileIdIn(ids);
+                && !(editingPost == null
+                        ? postImageRepository.existsByFileIdIn(ids)
+                        : postImageRepository.existsByFileIdInAndPostNot(ids, editingPost));
         if (!valid) {
-            log.warn("[CommunityService] 게시물 작성 서비스 - 사용할 수 없는 이미지: userId={}, fileIds={}", userId, ids);
+            log.warn("[CommunityService] 사용할 수 없는 이미지: userId={}, fileIds={}", userId, ids);
             throw new CustomException(CommunityErrorCode.INVALID_POST_IMAGE);
         }
         return ids.stream().map(files::get).toList();

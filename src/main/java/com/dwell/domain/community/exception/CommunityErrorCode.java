@@ -13,7 +13,7 @@ public enum CommunityErrorCode implements BaseErrorCode {
     TOO_MANY_TAGS("CM002", "You can add up to 5 tags.", HttpStatus.BAD_REQUEST),
     INVALID_POST_IMAGE("CM003", "Some images are invalid or already used.", HttpStatus.BAD_REQUEST),
     POST_NOT_FOUND("CM004", "Post not found.", HttpStatus.NOT_FOUND),
-    NOT_POST_AUTHOR("CM005", "You can only delete your own posts.", HttpStatus.FORBIDDEN);
+    NOT_POST_AUTHOR("CM005", "You can only edit or delete your own posts.", HttpStatus.FORBIDDEN);
 
     private final String code;
     private final String message;
