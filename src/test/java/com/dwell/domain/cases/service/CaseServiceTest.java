@@ -127,6 +127,40 @@ class CaseServiceTest {
     }
 
     @Test
+    @DisplayName("상세 조회: Other를 고른 항목은 직접 입력한 값도 내려줌")
+    void overviewOtherValues() {
+        Case caseEntity = caseOf(owner(1L), CaseStage.AWAITING_RESPONSE);
+        ReflectionTestUtils.setField(caseEntity, "issueDetail", "OTHER");
+        ReflectionTestUtils.setField(caseEntity, "issueDetailOther", "Rainwater coming in");
+        ReflectionTestUtils.setField(caseEntity, "location", Location.OTHER);
+        ReflectionTestUtils.setField(caseEntity, "locationOther", "Garage");
+        ReflectionTestUtils.setField(caseEntity, "affectedArea", AffectedArea.OTHER);
+        ReflectionTestUtils.setField(caseEntity, "affectedAreaOther", "Behind the mirror");
+        given(caseRepository.findByIdAndDeletedAtIsNull(6L)).willReturn(Optional.of(caseEntity));
+        stubCaseOverview();
+
+        CaseOverviewResponse response = caseService.getCaseOverview(6L, 1L);
+
+        assertThat(response.getIssueDetailOther()).isEqualTo("Rainwater coming in");
+        assertThat(response.getLocationOther()).isEqualTo("Garage");
+        assertThat(response.getAffectedAreaOther()).isEqualTo("Behind the mirror");
+    }
+
+    @Test
+    @DisplayName("상세 조회: Other가 아니면 직접 입력값은 null")
+    void overviewOtherValuesNull() {
+        Case caseEntity = caseOf(owner(1L), CaseStage.AWAITING_RESPONSE);
+        given(caseRepository.findByIdAndDeletedAtIsNull(6L)).willReturn(Optional.of(caseEntity));
+        stubCaseOverview();
+
+        CaseOverviewResponse response = caseService.getCaseOverview(6L, 1L);
+
+        assertThat(response.getIssueDetailOther()).isNull();
+        assertThat(response.getLocationOther()).isNull();
+        assertThat(response.getAffectedAreaOther()).isNull();
+    }
+
+    @Test
     @DisplayName("타임라인 조회: 헤더(번호·주소·배지) + 이벤트 카드")
     void timeline() {
         Case caseEntity = caseOf(owner(1L), CaseStage.AWAITING_RESPONSE);
