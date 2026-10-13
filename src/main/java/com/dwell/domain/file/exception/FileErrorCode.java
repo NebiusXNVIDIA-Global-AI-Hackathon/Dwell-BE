@@ -13,7 +13,8 @@ public enum FileErrorCode implements BaseErrorCode {
     UNSUPPORTED_FILE_TYPE("F002", "Only photos, videos, audio, and PDF or Word documents are allowed.", HttpStatus.BAD_REQUEST),
     FILE_NOT_FOUND("F003", "File not found.", HttpStatus.NOT_FOUND),
     FILE_ALREADY_LINKED("F004", "This file is already linked to other evidence.", HttpStatus.CONFLICT),
-    NOT_EVIDENCE_FILE("F005", "Only files uploaded as evidence can be attached to a case.", HttpStatus.BAD_REQUEST);
+    NOT_EVIDENCE_FILE("F005", "Only files uploaded as evidence can be attached to a case.", HttpStatus.BAD_REQUEST),
+    NOT_PROFILE_IMAGE_FILE("F006", "Only files uploaded as a profile image can be used as a profile photo.", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

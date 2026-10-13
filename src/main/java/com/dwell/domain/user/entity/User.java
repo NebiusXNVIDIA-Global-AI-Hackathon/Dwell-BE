@@ -60,4 +60,15 @@ public class User extends BaseTimeEntity {
         }
         this.providerId = providerId;
     }
+
+    // 프로필 수정
+    public void updateProfile(String nickname, String preferredLanguage) {
+        this.nickname = nickname;
+        this.preferredLanguage = preferredLanguage;
+    }
+
+    // 프로필 사진 변경
+    public void changeProfileImage(String profileImageKey) {
+        this.profileImageKey = profileImageKey;
+    }
 }
