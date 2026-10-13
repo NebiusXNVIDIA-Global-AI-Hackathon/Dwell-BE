@@ -14,6 +14,6 @@ public class ConversationListResponse {
     @Schema(description = "Case 채팅방 (해결된 Case 제외, 최근 메시지 순)")
     private List<CaseChatResponse> caseChats;
 
-    @Schema(description = "Other 채팅방 (최근 메시지 순)")
+    @Schema(description = "Other 채팅방 (일반 + 내 집 확인, 최근 메시지 순)")
     private List<OtherChatResponse> otherChats;
 }

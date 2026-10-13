@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -51,5 +52,15 @@ public class AssistantAction extends BaseCreatedTimeEntity {
         this.type = type;
         this.choices = choices;
         this.payload = payload;
+    }
+
+    // 선택 기록 (한 번만, 추가 값은 payload에 합침)
+    public void choose(String choice, Map<String, Object> extraPayload) {
+        this.chosen = choice;
+        if (extraPayload != null && !extraPayload.isEmpty()) {
+            Map<String, Object> merged = this.payload == null ? new LinkedHashMap<>() : new LinkedHashMap<>(this.payload);
+            merged.putAll(extraPayload);
+            this.payload = merged;
+        }
     }
 }

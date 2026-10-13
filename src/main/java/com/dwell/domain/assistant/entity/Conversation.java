@@ -1,6 +1,7 @@
 package com.dwell.domain.assistant.entity;
 
 import com.dwell.domain.assistant.enums.ConversationType;
+import com.dwell.domain.building.entity.InspectionResult;
 import com.dwell.domain.cases.entity.Case;
 import com.dwell.domain.user.entity.User;
 import com.dwell.global.common.BaseCreatedTimeEntity;
@@ -9,6 +10,8 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
 
 @Getter
 @Entity
@@ -32,10 +35,23 @@ public class Conversation extends BaseCreatedTimeEntity {
     @JoinColumn(name = "case_id")
     private Case caseEntity;
 
+    // Required when type is INSPECTION (Check My Unit -> Talk to Deaver), one conversation per inspection
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "inspection_id")
+    private InspectionResult inspection;
+
+    // Last time the user opened this chat, used for the unread dot
+    private LocalDateTime lastReadAt;
+
     @Builder
-    public Conversation(User user, ConversationType type, Case caseEntity) {
+    public Conversation(User user, ConversationType type, Case caseEntity, InspectionResult inspection) {
         this.user = user;
         this.type = type;
         this.caseEntity = caseEntity;
+        this.inspection = inspection;
+    }
+
+    public void markRead() {
+        this.lastReadAt = LocalDateTime.now();
     }
 }

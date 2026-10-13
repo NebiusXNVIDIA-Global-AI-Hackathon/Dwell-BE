@@ -1,6 +1,7 @@
 package com.dwell.global.config;
 
 import com.dwell.global.security.JwtAuthenticationFilter;
+import jakarta.servlet.DispatcherType;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -39,6 +40,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Default error path is open to everyone
                         .requestMatchers("/error").permitAll()
+
+                        // Async dispatch of an already authorized request (SSE streaming, e.g. Assistant messages)
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
 
                         // Allow access to Swagger docs
                         .requestMatchers(

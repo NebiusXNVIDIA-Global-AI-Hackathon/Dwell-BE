@@ -20,9 +20,15 @@ public class CaseChatResponse {
     @Schema(description = "채팅 제목 (이슈 유형 · 케이스 번호)", example = "Water Leak · C-006")
     private String title;
 
+    @Schema(description = "케이스 첫 번째 증거 사진 (없으면 null)", example = "https://...")
+    private String thumbnailUrl;
+
     @Schema(description = "마지막 메시지 (없으면 null)", example = "Deaver: If anything else needs updating, just let me know.")
     private String lastMessage;
 
     @Schema(description = "마지막 메시지 시각, UTC (없으면 null)", example = "2026-10-07T09:58:00Z")
     private Instant lastMessageAt;
+
+    @Schema(description = "마지막 Deaver 메시지 이후 채팅방을 열지 않았는지", example = "true")
+    private Boolean hasUnread;
 }
