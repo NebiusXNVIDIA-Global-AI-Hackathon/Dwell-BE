@@ -6,6 +6,7 @@ import com.dwell.domain.building.repository.UserPlaceRepository;
 import com.dwell.domain.cases.dto.request.CaseCreateRequest;
 import com.dwell.domain.cases.dto.request.CaseEvidenceAddRequest;
 import com.dwell.domain.cases.dto.response.CaseCreateResponse;
+import com.dwell.domain.cases.dto.response.CaseOptionsResponse;
 import com.dwell.domain.cases.dto.response.CaseOverviewResponse;
 import com.dwell.domain.cases.dto.response.CaseTimelineResponse;
 import com.dwell.domain.cases.entity.Case;
@@ -251,6 +252,85 @@ class CaseServiceTest {
         CaseCreateResponse response = caseService.createCase(1L, request);
 
         assertThat(response.getCaseNumber()).isEqualTo("C-004");
+    }
+
+    @Test
+    @DisplayName("케이스 생성: 카테고리에 없는 세부 이슈면 INVALID_ISSUE_DETAIL")
+    void createCaseInvalidIssueDetail() {
+        // Gas 카테고리에 Roaches
+        CaseCreateRequest request = createRequest(IssueCategory.GAS, "ROACHES", Location.BATHROOM, AffectedArea.CEILING);
+
+        assertThatThrownBy(() -> caseService.createCase(1L, request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(CaseErrorCode.INVALID_ISSUE_DETAIL);
+        verify(caseRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("케이스 생성: 제목에 와프 문구 사용 (WATER_STAIN → Water Stain or Damage, SHOWER → Shower / Tub)")
+    void createCaseTitleUsesLabels() {
+        stubCaseCreation(List.of(fileOf(1L, MediaType.PHOTO)), null);
+
+        CaseCreateRequest request = createRequest(IssueCategory.WATER_FLOODING, "WATER_STAIN", Location.BATHROOM, AffectedArea.SHOWER);
+
+        caseService.createCase(1L, request);
+
+        ArgumentCaptor<Case> caseCaptor = ArgumentCaptor.forClass(Case.class);
+        verify(caseRepository).save(caseCaptor.capture());
+        assertThat(caseCaptor.getValue().getTitle()).isEqualTo("Water Stain or Damage in Bathroom · Shower / Tub");
+    }
+
+    @Test
+    @DisplayName("입력 옵션: 카테고리 10개, 세부 이슈 마지막은 OTHER, 안전 경고 조건")
+    void getCaseOptionsIssueCategories() {
+        CaseOptionsResponse response = caseService.getCaseOptions();
+
+        assertThat(response.getIssueCategories()).hasSize(10);
+
+        // Electricity는 카테고리에 ELECTRICAL, Gas는 GAS
+        assertThat(findCategory(response, IssueCategory.ELECTRICITY).getSafetyAlert()).isEqualTo(SafetyAlert.ELECTRICAL);
+        assertThat(findCategory(response, IssueCategory.GAS).getSafetyAlert()).isEqualTo(SafetyAlert.GAS);
+
+        // Water & Flooding은 카테고리에 경고가 없고, 세부 이슈 Flooding에 FLOODING
+        CaseOptionsResponse.IssueCategoryOption waterFlooding = findCategory(response, IssueCategory.WATER_FLOODING);
+        assertThat(waterFlooding.getSafetyAlert()).isNull();
+        assertThat(waterFlooding.getDetails())
+                .filteredOn(detail -> detail.getCode().equals("FLOODING"))
+                .extracting(CaseOptionsResponse.IssueDetailOption::getSafetyAlert)
+                .containsExactly(SafetyAlert.FLOODING);
+
+        // 세부 이슈 마지막은 직접 입력 (Appliances만 문구가 다름)
+        assertThat(waterFlooding.getDetails()).last()
+                .extracting(CaseOptionsResponse.IssueDetailOption::getCode).isEqualTo("OTHER");
+        assertThat(findCategory(response, IssueCategory.APPLIANCES).getDetails()).last()
+                .extracting(CaseOptionsResponse.IssueDetailOption::getLabel).isEqualTo("Other Appliance");
+
+        // 안전 경고 문구 3개
+        assertThat(response.getSafetyAlerts()).containsOnlyKeys(SafetyAlert.ELECTRICAL, SafetyAlert.GAS, SafetyAlert.FLOODING);
+    }
+
+    @Test
+    @DisplayName("입력 옵션: 공간 순서, 공간별 부위, Entire Unit은 부위 없음, 촬영 가이드 4장")
+    void getCaseOptionsLocations() {
+        CaseOptionsResponse response = caseService.getCaseOptions();
+
+        // 와프 Step 3 순서 (Hallway 제외)
+        assertThat(response.getLocations()).extracting(CaseOptionsResponse.LocationOption::getCode)
+                .containsExactly(Location.BATHROOM, Location.KITCHEN, Location.LIVING_ROOM, Location.BEDROOM,
+                        Location.LAUNDRY_AREA, Location.BALCONY, Location.ENTIRE_UNIT, Location.EXTERIOR, Location.OTHER);
+
+        // Bathroom에는 Shower / Tub가 있고 Sofa는 없음
+        CaseOptionsResponse.LocationOption bathroom = response.getLocations().get(0);
+        assertThat(bathroom.getAffectedAreas()).extracting(CaseOptionsResponse.AffectedAreaOption::getLabel).contains("Shower / Tub");
+        assertThat(bathroom.getAffectedAreas()).extracting(CaseOptionsResponse.AffectedAreaOption::getCode).doesNotContain(AffectedArea.SOFA_SEATING);
+
+        // Entire Unit은 Step 4를 건너뜀
+        CaseOptionsResponse.LocationOption entireUnit = response.getLocations().get(6);
+        assertThat(entireUnit.getCode()).isEqualTo(Location.ENTIRE_UNIT);
+        assertThat(entireUnit.getAffectedAreas()).isEmpty();
+
+        // 촬영 가이드 4장
+        assertThat(response.getEvidenceGuide().getShots()).hasSize(4);
     }
 
     @Test
@@ -533,6 +613,14 @@ class CaseServiceTest {
     }
 
     // ========== 테스트 픽스처 ==========
+
+    // 입력 옵션에서 카테고리 찾기
+    private CaseOptionsResponse.IssueCategoryOption findCategory(CaseOptionsResponse response, IssueCategory category) {
+        return response.getIssueCategories().stream()
+                .filter(option -> option.getCode() == category)
+                .findFirst()
+                .orElseThrow();
+    }
 
     private User owner(Long id) {
         User user = mock(User.class);

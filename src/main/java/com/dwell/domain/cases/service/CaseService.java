@@ -13,6 +13,8 @@ import com.dwell.domain.cases.enums.AffectedArea;
 import com.dwell.domain.cases.enums.CaseEventRefType;
 import com.dwell.domain.cases.enums.CaseEventType;
 import com.dwell.domain.cases.enums.CaseStage;
+import com.dwell.domain.cases.enums.IssueDetail;
+import com.dwell.domain.cases.enums.SafetyAlert;
 import com.dwell.domain.cases.exception.CaseErrorCode;
 import com.dwell.domain.cases.repository.CaseChecklistItemRepository;
 import com.dwell.domain.cases.repository.CaseEventRepository;
@@ -44,13 +46,18 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 @Slf4j
 public class CaseService {
+
+    // New Case Step 3 공간 순서 (와프 기준, Hallway는 와프에 없어 제외)
+    private static final List<Location> NEW_CASE_LOCATIONS = List.of(
+            Location.BATHROOM, Location.KITCHEN, Location.LIVING_ROOM,
+            Location.BEDROOM, Location.LAUNDRY_AREA, Location.BALCONY,
+            Location.ENTIRE_UNIT, Location.EXTERIOR, Location.OTHER);
 
     private final CaseRepository caseRepository;
     private final CaseChecklistItemRepository caseChecklistItemRepository;
@@ -159,12 +166,97 @@ public class CaseService {
         return caseEntity;
     }
 
+    // 케이스 입력 옵션 (New Case 선택지·안전 경고·촬영 가이드, 고정 데이터)
+    public CaseOptionsResponse getCaseOptions() {
+
+        // 이슈 카테고리 + 세부 이슈 (Step 1, 2)
+        List<CaseOptionsResponse.IssueCategoryOption> issueCategories = new ArrayList<>();
+        for (IssueCategory category : IssueCategory.values()) {
+
+            List<CaseOptionsResponse.IssueDetailOption> details = new ArrayList<>();
+            for (IssueDetail detail : IssueDetail.detailsOf(category)) {
+                details.add(CaseOptionsResponse.IssueDetailOption.builder()
+                        .code(detail.name())
+                        .label(detail.getLabel())
+                        .safetyAlert(detail.getSafetyAlert())
+                        .build());
+            }
+
+            // 직접 입력 선택지는 항상 마지막
+            details.add(CaseOptionsResponse.IssueDetailOption.builder()
+                    .code(IssueDetail.OTHER)
+                    .label(IssueDetail.otherLabel(category))
+                    .build());
+
+            issueCategories.add(CaseOptionsResponse.IssueCategoryOption.builder()
+                    .code(category)
+                    .label(category.getLabel())
+                    .safetyAlert(SafetyAlert.ofCategory(category))
+                    .details(details)
+                    .build());
+        }
+
+        // 공간 + 공간별 부위 (Step 3, 4)
+        List<CaseOptionsResponse.LocationOption> locations = new ArrayList<>();
+        for (Location location : NEW_CASE_LOCATIONS) {
+
+            List<CaseOptionsResponse.AffectedAreaOption> affectedAreas = new ArrayList<>();
+            for (AffectedArea affectedArea : AffectedArea.allowedIn(location)) {
+                affectedAreas.add(CaseOptionsResponse.AffectedAreaOption.builder()
+                        .code(affectedArea)
+                        .label(affectedArea.getLabel())
+                        .build());
+            }
+
+            locations.add(CaseOptionsResponse.LocationOption.builder()
+                    .code(location)
+                    .label(location.getLabel())
+                    .affectedAreas(affectedAreas)
+                    .build());
+        }
+
+        // 안전 경고 모달 문구
+        Map<SafetyAlert, CaseOptionsResponse.SafetyAlertOption> safetyAlerts = new EnumMap<>(SafetyAlert.class);
+        for (SafetyAlert safetyAlert : SafetyAlert.values()) {
+            safetyAlerts.put(safetyAlert, CaseOptionsResponse.SafetyAlertOption.builder()
+                    .title(safetyAlert.getTitle())
+                    .headline(safetyAlert.getHeadline())
+                    .body(safetyAlert.getBody())
+                    .build());
+        }
+
+        // 증거 촬영 가이드 (와프 Before You Go 원문, 이슈와 상관없이 고정 4장 / "Sourrounding" 오타만 수정)
+        CaseOptionsResponse.EvidenceGuide evidenceGuide = CaseOptionsResponse.EvidenceGuide.builder()
+                .title("Let's capture the right evidence")
+                .shots(List.of(
+                        evidenceShot("OVERALL", "Overall View", "Show the entire area"),
+                        evidenceShot("CLOSE_UP", "Close-up", "Get a closer look at the damage."),
+                        evidenceShot("VIDEO_OR_RECORDING", "Video or Recording (if visible)", "Show where the issue is coming from lively."),
+                        evidenceShot("SURROUNDING", "Surrounding area", "Include nearby")))
+                .build();
+
+        // 응답 세팅
+        return CaseOptionsResponse.builder()
+                .issueCategories(issueCategories)
+                .locations(locations)
+                .safetyAlerts(safetyAlerts)
+                .evidenceGuide(evidenceGuide)
+                .build();
+    }
+
     // 케이스 생성 (올린 파일들을 증거 1건으로 묶어 함께 저장)
     @Transactional
     public CaseCreateResponse createCase(Long userId, CaseCreateRequest request) {
 
+        // 세부 이슈가 카테고리에 맞는지 확인 (OTHER는 모든 카테고리에서 허용)
+        if (!IssueDetail.isAllowedIn(request.getIssueCategory(), request.getIssueDetail())) {
+            log.warn("[CaseService] Case creation failed: invalid issue detail: category={}, issueDetail={}",
+                    request.getIssueCategory(), request.getIssueDetail());
+            throw new CustomException(CaseErrorCode.INVALID_ISSUE_DETAIL);
+        }
+
         // 세부 이슈가 Other면 직접 입력한 값이 있는지 확인
-        if (request.getIssueDetail().equals("OTHER") && isBlank(request.getIssueDetailOther())) {
+        if (request.getIssueDetail().equals(IssueDetail.OTHER) && isBlank(request.getIssueDetailOther())) {
             log.warn("[CaseService] Case creation failed: issue detail (Other) is empty");
             throw new CustomException(CaseErrorCode.OTHER_TEXT_REQUIRED);
         }
@@ -493,14 +585,16 @@ public class CaseService {
     // 케이스 제목 생성: "Water Leak in Bathroom · Ceiling" (부위가 없으면 "No Heat in Entire Unit")
     private String createTitle(CaseCreateRequest request) {
 
-        // 세부 이슈 (Other면 직접 입력한 값)
-        String issue = toLabel(request.getIssueDetail());
-        if (request.getIssueDetail().equals("OTHER")) {
+        // 세부 이슈 (와프 문구, Other면 직접 입력한 값)
+        String issue;
+        if (request.getIssueDetail().equals(IssueDetail.OTHER)) {
             issue = request.getIssueDetailOther();
+        } else {
+            issue = IssueDetail.valueOf(request.getIssueDetail()).getLabel();
         }
 
         // 공간 (Other면 직접 입력한 값)
-        String place = toLabel(request.getLocation().name());
+        String place = request.getLocation().getLabel();
         if (request.getLocation() == Location.OTHER) {
             place = request.getLocationOther();
         }
@@ -509,7 +603,7 @@ public class CaseService {
 
         // 부위 (Entire Unit이면 없음, Other면 직접 입력한 값)
         if (request.getAffectedArea() != null) {
-            String area = toLabel(request.getAffectedArea().name());
+            String area = request.getAffectedArea().getLabel();
             if (request.getAffectedArea() == AffectedArea.OTHER) {
                 area = request.getAffectedAreaOther();
             }
@@ -535,11 +629,13 @@ public class CaseService {
         };
     }
 
-    // 코드 → 표시 문구 (WATER_LEAK → Water Leak)
-    private String toLabel(String code) {
-        return Arrays.stream(code.split("_"))
-                .map(word -> word.charAt(0) + word.substring(1).toLowerCase())
-                .collect(Collectors.joining(" "));
+    // 촬영 가이드 항목 DTO
+    private CaseOptionsResponse.EvidenceShot evidenceShot(String key, String title, String description) {
+        return CaseOptionsResponse.EvidenceShot.builder()
+                .key(key)
+                .title(title)
+                .description(description)
+                .build();
     }
 
     // 증거의 파일 종류: 모두 같으면 그 종류, 섞여 있으면 MULTI
