@@ -256,7 +256,7 @@ public class CaseService {
         }
 
         // 세부 이슈가 Other면 직접 입력한 값이 있는지 확인
-        if (request.getIssueDetail().equals("OTHER") && isBlank(request.getIssueDetailOther())) {
+        if (request.getIssueDetail().equals(IssueDetail.OTHER) && isBlank(request.getIssueDetailOther())) {
             log.warn("[CaseService] Case creation failed: issue detail (Other) is empty");
             throw new CustomException(CaseErrorCode.OTHER_TEXT_REQUIRED);
         }
