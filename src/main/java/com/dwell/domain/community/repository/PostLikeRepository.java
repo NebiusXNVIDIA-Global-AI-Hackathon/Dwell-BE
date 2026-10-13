@@ -21,4 +21,7 @@ public interface PostLikeRepository extends JpaRepository<PostLike, PostLikeId> 
 
     // 게시물 좋아요 수
     long countByIdPostId(Long postId);
+
+    // 내가 좋아요 눌렀는지
+    boolean existsByIdPostIdAndIdUserId(Long postId, Long userId);
 }

@@ -22,6 +22,10 @@ public interface PostImageRepository extends JpaRepository<PostImage, Long> {
     @Query("select pi.file from PostImage pi where pi.post = :post")
     List<File> findFilesByPost(Post post);
 
+    // 게시물 이미지 파일 (등록 순서대로, 게시물 상세용)
+    @Query("select pi.file from PostImage pi where pi.post = :post order by pi.sortOrder")
+    List<File> findFilesByPostOrderBySortOrder(Post post);
+
     // 게시물 이미지 연결 전부 삭제 (바로 실행 -> 같은 파일을 다시 연결해도 file_id UNIQUE에 안 걸림)
     @Modifying
     @Query("delete from PostImage pi where pi.post = :post")

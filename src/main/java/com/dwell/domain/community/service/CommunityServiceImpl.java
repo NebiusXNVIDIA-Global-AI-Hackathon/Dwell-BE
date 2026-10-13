@@ -6,22 +6,31 @@ import com.dwell.domain.community.dto.request.PostCreateRequest;
 import com.dwell.domain.community.dto.request.PostLikeRequest;
 import com.dwell.domain.community.dto.request.PostUpdateRequest;
 import com.dwell.domain.community.dto.response.PostCreateResponse;
+import com.dwell.domain.community.dto.response.PostAuthorResponse;
+import com.dwell.domain.community.dto.response.PostDetailResponse;
+import com.dwell.domain.community.dto.response.PostImageResponse;
 import com.dwell.domain.community.dto.response.PostLikeResponse;
 import com.dwell.domain.community.dto.response.PostUpdateResponse;
+import com.dwell.domain.community.dto.response.ReplyAuthorResponse;
+import com.dwell.domain.community.dto.response.ReplyResponse;
 import com.dwell.domain.community.entity.Post;
 import com.dwell.domain.community.entity.PostImage;
 import com.dwell.domain.community.entity.PostTag;
+import com.dwell.domain.community.entity.Reply;
 import com.dwell.domain.community.entity.Tag;
 import com.dwell.domain.community.exception.CommunityErrorCode;
 import com.dwell.domain.community.repository.PostImageRepository;
 import com.dwell.domain.community.repository.PostLikeRepository;
 import com.dwell.domain.community.repository.PostRepository;
 import com.dwell.domain.community.repository.PostTagRepository;
+import com.dwell.domain.community.repository.ReplyRepository;
 import com.dwell.domain.community.repository.TagRepository;
 import com.dwell.domain.file.entity.File;
 import com.dwell.domain.file.enums.FilePurpose;
 import com.dwell.domain.file.repository.FileRepository;
 import com.dwell.domain.file.service.FileService;
+import com.dwell.domain.file.service.S3Uploader;
+import com.dwell.domain.user.entity.User;
 import com.dwell.global.common.enums.FloorBand;
 import com.dwell.global.exception.CustomException;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +51,8 @@ import java.util.stream.Collectors;
 public class CommunityServiceImpl implements CommunityService {
 
     private static final int MAX_TAGS = 5;
+    private static final String DELETED_USER = "Deleted user";
+    private static final String DEFAULT_NICKNAME = "Neighbor"; // 닉네임 미설정 사용자
     private static final int LOWER_FLOOR_MAX = 3; // 1~3층 Lower
     private static final int MIDDLE_FLOOR_MAX = 6; // 4~6층 Middle, 7층~ Upper
 
@@ -50,9 +61,11 @@ public class CommunityServiceImpl implements CommunityService {
     private final PostTagRepository postTagRepository;
     private final PostImageRepository postImageRepository;
     private final PostLikeRepository postLikeRepository;
+    private final ReplyRepository replyRepository;
     private final UserPlaceRepository userPlaceRepository;
     private final FileRepository fileRepository;
     private final FileService fileService;
+    private final S3Uploader s3Uploader;
 
     // 게시물 작성 서비스
     @Override
@@ -178,6 +191,61 @@ public class CommunityServiceImpl implements CommunityService {
                 .build();
     }
 
+    // 게시물 상세 서비스
+    @Override
+    public PostDetailResponse getPost(Long postId, Long userId) {
+
+        log.info("[CommunityService] 게시물 상세 서비스 - 시작: postId={}, userId={}", postId, userId);
+
+        // 내 건물 게시물 조회
+        Post post = findPostInMyBuilding(postId, userId);
+
+        // 태그 (#붙여서)
+        List<String> tags = postTagRepository.findTagNamesByPost(post).stream()
+                .map(name -> "#" + name)
+                .toList();
+
+        // 이미지 (등록 순서대로, 비공개 버킷이라 presigned URL)
+        List<PostImageResponse> images = postImageRepository.findFilesByPostOrderBySortOrder(post).stream()
+                .map(file -> PostImageResponse.builder()
+                        .fileId(file.getId())
+                        .url(s3Uploader.getPresignedUrl(file.getStorageKey()))
+                        .build())
+                .toList();
+
+        // 댓글 (오래된 순)
+        List<ReplyResponse> replies = replyRepository.findAllByPostWithUser(post).stream()
+                .map(reply -> ReplyResponse.builder()
+                        .replyId(reply.getId())
+                        .author(toReplyAuthor(reply, userId))
+                        .content(reply.getContent())
+                        .createdAt(reply.getCreatedAt())
+                        .build())
+                .toList();
+
+        // 작성자 (층 구간만, 탈퇴한 작성자는 Deleted user)
+        PostAuthorResponse author = PostAuthorResponse.builder()
+                .label(post.getUser() == null ? DELETED_USER : toFloorLabel(post.getFloorBand()) + " neighbor")
+                .isMe(post.getUser() != null && post.getUser().getId().equals(userId))
+                .build();
+
+        log.info("[CommunityService] 게시물 상세 서비스 - 완료: postId={}, images={}, replies={}", postId, images.size(), replies.size());
+
+        return PostDetailResponse.builder()
+                .postId(post.getId())
+                .board(post.getBoard())
+                .title(post.getTitle())
+                .content(post.getContent())
+                .author(author)
+                .tags(tags)
+                .images(images)
+                .likeCount(postLikeRepository.countByIdPostId(postId))
+                .likedByMe(postLikeRepository.existsByIdPostIdAndIdUserId(postId, userId))
+                .createdAt(post.getCreatedAt())
+                .replies(replies)
+                .build();
+    }
+
     // 좋아요 / 좋아요 취소 서비스
     @Override
     @Transactional
@@ -185,21 +253,8 @@ public class CommunityServiceImpl implements CommunityService {
 
         log.info("[CommunityService] 좋아요 서비스 - 시작: postId={}, userId={}, liked={}", postId, userId, request.getLiked());
 
-        // 게시물 조회
-        Post post = postRepository.findById(postId)
-                .orElseThrow(() -> {
-                    log.warn("[CommunityService] 좋아요 서비스 - 존재하지 않는 게시물: postId={}", postId);
-                    return new CustomException(CommunityErrorCode.POST_NOT_FOUND);
-                });
-
-        // 내 건물 게시물인지 확인 (게시판은 건물 단위, 다른 건물 글은 없는 글로 처리)
-        boolean sameBuilding = userPlaceRepository.findByUserId(userId)
-                .map(place -> place.getBuilding().getId().equals(post.getBuilding().getId()))
-                .orElse(false);
-        if (!sameBuilding) {
-            log.warn("[CommunityService] 좋아요 서비스 - 다른 건물 게시물 접근 시도: postId={}, userId={}", postId, userId);
-            throw new CustomException(CommunityErrorCode.POST_NOT_FOUND);
-        }
+        // 내 건물 게시물 조회 (게시물 존재 여부만 확인)
+        findPostInMyBuilding(postId, userId);
 
         // 좋아요 추가 / 취소 (이미 그 상태면 아무 일 없음)
         if (request.getLiked()) {
@@ -235,6 +290,58 @@ public class CommunityServiceImpl implements CommunityService {
             throw new CustomException(CommunityErrorCode.NOT_POST_AUTHOR);
         }
         return post;
+    }
+
+    // 내 건물 게시물 조회 (게시판은 건물 단위라 다른 건물 글·집 미등록이면 없는 글로 처리)
+    private Post findPostInMyBuilding(Long postId, Long userId) {
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> {
+                    log.warn("[CommunityService] 게시물 조회 실패 - 존재하지 않는 게시물: postId={}", postId);
+                    return new CustomException(CommunityErrorCode.POST_NOT_FOUND);
+                });
+
+        boolean sameBuilding = userPlaceRepository.findByUserId(userId)
+                .map(place -> place.getBuilding().getId().equals(post.getBuilding().getId()))
+                .orElse(false);
+        if (!sameBuilding) {
+            log.warn("[CommunityService] 게시물 조회 실패 - 다른 건물 게시물 접근 시도: postId={}, userId={}", postId, userId);
+            throw new CustomException(CommunityErrorCode.POST_NOT_FOUND);
+        }
+        return post;
+    }
+
+    // 댓글 작성자 (닉네임 + 이니셜, 탈퇴한 작성자는 Deleted user)
+    private ReplyAuthorResponse toReplyAuthor(Reply reply, Long userId) {
+        User user = reply.getUser();
+        String nickname = user == null ? DELETED_USER
+                : user.getNickname() != null ? user.getNickname() : DEFAULT_NICKNAME;
+        return ReplyAuthorResponse.builder()
+                .nickname(nickname)
+                .initials(user == null ? null : toInitials(nickname))
+                .floorBand(reply.getFloorBand())
+                .isMe(user != null && user.getId().equals(userId))
+                .build();
+    }
+
+    // 닉네임 이니셜 (GuiltyMo -> GM, LeftMino -> LM, DORAI -> DI, mino -> MO)
+    private String toInitials(String nickname) {
+        String capitals = nickname.chars()
+                .filter(Character::isUpperCase)
+                .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
+                .toString();
+        if (capitals.length() >= 2 && capitals.length() < nickname.length()) {
+            return capitals.substring(0, 2);
+        }
+        if (nickname.length() == 1) {
+            return nickname.toUpperCase();
+        }
+        return (nickname.substring(0, 1) + nickname.substring(nickname.length() - 1)).toUpperCase();
+    }
+
+    // 층 구간 -> 표시 문구 (MIDDLE -> Middle Floor)
+    private String toFloorLabel(FloorBand floorBand) {
+        String name = floorBand.name();
+        return name.charAt(0) + name.substring(1).toLowerCase() + " Floor";
     }
 
     // 태그 정리 ("#Pipe Burst" -> "pipeburst"), 빈 값·중복 제거
