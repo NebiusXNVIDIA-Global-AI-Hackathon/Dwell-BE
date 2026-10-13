@@ -1,9 +1,14 @@
 package com.dwell.domain.community.service;
 
+import com.dwell.domain.building.entity.Building;
+import com.dwell.domain.building.entity.UserPlace;
 import com.dwell.domain.building.repository.UserPlaceRepository;
+import com.dwell.domain.community.dto.request.PostLikeRequest;
+import com.dwell.domain.community.dto.response.PostLikeResponse;
 import com.dwell.domain.community.entity.Post;
 import com.dwell.domain.community.exception.CommunityErrorCode;
 import com.dwell.domain.community.repository.PostImageRepository;
+import com.dwell.domain.community.repository.PostLikeRepository;
 import com.dwell.domain.community.repository.PostRepository;
 import com.dwell.domain.community.repository.PostTagRepository;
 import com.dwell.domain.community.repository.TagRepository;
@@ -23,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
@@ -40,6 +46,8 @@ class CommunityServiceImplTest {
     @Mock
     private PostImageRepository postImageRepository;
     @Mock
+    private PostLikeRepository postLikeRepository;
+    @Mock
     private UserPlaceRepository userPlaceRepository;
     @Mock
     private FileRepository fileRepository;
@@ -51,7 +59,7 @@ class CommunityServiceImplTest {
     @BeforeEach
     void setUp() {
         communityService = new CommunityServiceImpl(postRepository, tagRepository, postTagRepository, postImageRepository,
-                userPlaceRepository, fileRepository, fileService);
+                postLikeRepository, userPlaceRepository, fileRepository, fileService);
     }
 
     @Test
@@ -104,6 +112,102 @@ class CommunityServiceImplTest {
         InOrder inOrder = inOrder(postRepository, fileService);
         inOrder.verify(postRepository).delete(post);
         inOrder.verify(fileService).deleteFiles(files);
+    }
+
+    @Test
+    @DisplayName("좋아요: 없는 게시물이면 POST_NOT_FOUND")
+    void likePostNotFound() {
+        given(postRepository.findById(40L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> communityService.likePost(40L, 1L, likeRequest(true)))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(CommunityErrorCode.POST_NOT_FOUND);
+        verifyNoInteractions(postLikeRepository);
+    }
+
+    @Test
+    @DisplayName("좋아요: 다른 건물 게시물이면 POST_NOT_FOUND")
+    void likePostOtherBuilding() {
+        Post post = postIn(building(10L));
+        UserPlace place = placeIn(building(20L));
+        given(postRepository.findById(40L)).willReturn(Optional.of(post));
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.of(place));
+
+        assertThatThrownBy(() -> communityService.likePost(40L, 1L, likeRequest(true)))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(CommunityErrorCode.POST_NOT_FOUND);
+        verifyNoInteractions(postLikeRepository);
+    }
+
+    @Test
+    @DisplayName("좋아요: 집 등록이 없으면 POST_NOT_FOUND")
+    void likePostWithoutPlace() {
+        Post post = mock(Post.class);
+        given(postRepository.findById(40L)).willReturn(Optional.of(post));
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> communityService.likePost(40L, 1L, likeRequest(true)))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(CommunityErrorCode.POST_NOT_FOUND);
+        verifyNoInteractions(postLikeRepository);
+    }
+
+    @Test
+    @DisplayName("좋아요: liked=true면 추가(중복 무시)하고 좋아요 수 반환")
+    void likePost() {
+        Post post = postIn(building(10L));
+        UserPlace place = placeIn(building(10L));
+        given(postRepository.findById(40L)).willReturn(Optional.of(post));
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.of(place));
+        given(postLikeRepository.countByIdPostId(40L)).willReturn(9L);
+
+        PostLikeResponse response = communityService.likePost(40L, 1L, likeRequest(true));
+
+        verify(postLikeRepository).insertIgnore(40L, 1L);
+        verify(postLikeRepository, never()).deleteByPostIdAndUserId(any(), any());
+        assertThat(response.isLiked()).isTrue();
+        assertThat(response.getLikeCount()).isEqualTo(9L);
+    }
+
+    @Test
+    @DisplayName("좋아요 취소: liked=false면 삭제하고 좋아요 수 반환")
+    void unlikePost() {
+        Post post = postIn(building(10L));
+        UserPlace place = placeIn(building(10L));
+        given(postRepository.findById(40L)).willReturn(Optional.of(post));
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.of(place));
+        given(postLikeRepository.countByIdPostId(40L)).willReturn(8L);
+
+        PostLikeResponse response = communityService.likePost(40L, 1L, likeRequest(false));
+
+        verify(postLikeRepository).deleteByPostIdAndUserId(40L, 1L);
+        verify(postLikeRepository, never()).insertIgnore(any(), any());
+        assertThat(response.isLiked()).isFalse();
+        assertThat(response.getLikeCount()).isEqualTo(8L);
+    }
+
+    private PostLikeRequest likeRequest(boolean liked) {
+        PostLikeRequest request = new PostLikeRequest();
+        request.setLiked(liked);
+        return request;
+    }
+
+    private Building building(Long id) {
+        Building building = mock(Building.class);
+        given(building.getId()).willReturn(id);
+        return building;
+    }
+
+    private Post postIn(Building building) {
+        Post post = mock(Post.class);
+        given(post.getBuilding()).willReturn(building);
+        return post;
+    }
+
+    private UserPlace placeIn(Building building) {
+        UserPlace place = mock(UserPlace.class);
+        given(place.getBuilding()).willReturn(building);
+        return place;
     }
 
     private User author(Long id) {

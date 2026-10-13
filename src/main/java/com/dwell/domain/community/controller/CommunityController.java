@@ -1,8 +1,10 @@
 package com.dwell.domain.community.controller;
 
 import com.dwell.domain.community.dto.request.PostCreateRequest;
+import com.dwell.domain.community.dto.request.PostLikeRequest;
 import com.dwell.domain.community.dto.request.PostUpdateRequest;
 import com.dwell.domain.community.dto.response.PostCreateResponse;
+import com.dwell.domain.community.dto.response.PostLikeResponse;
 import com.dwell.domain.community.dto.response.PostUpdateResponse;
 import com.dwell.domain.community.service.CommunityService;
 import com.dwell.global.common.BaseResponse;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -74,5 +77,21 @@ public class CommunityController {
 
         // 응답 변환
         return ResponseEntity.ok(BaseResponse.success(200, "Post updated.", response));
+    }
+
+    // 좋아요 / 좋아요 취소 컨트롤러
+    @Operation(summary = "좋아요 / 좋아요 취소",
+            description = "liked=true면 좋아요, false면 취소합니다. 같은 값을 여러 번 보내도 결과가 같습니다(멱등).")
+    @PutMapping("/posts/{postId}/like")
+    public ResponseEntity<BaseResponse<PostLikeResponse>> likePost(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable Long postId,
+            @Valid @RequestBody PostLikeRequest request) {
+
+        // 좋아요 서비스 호출
+        PostLikeResponse response = communityService.likePost(postId, userDetails.getUser().getId(), request);
+
+        // 응답 변환
+        return ResponseEntity.ok(BaseResponse.success(200, request.getLiked() ? "Post liked." : "Post unliked.", response));
     }
 }

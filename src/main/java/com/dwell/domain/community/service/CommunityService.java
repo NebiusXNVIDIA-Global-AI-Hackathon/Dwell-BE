@@ -1,8 +1,10 @@
 package com.dwell.domain.community.service;
 
 import com.dwell.domain.community.dto.request.PostCreateRequest;
+import com.dwell.domain.community.dto.request.PostLikeRequest;
 import com.dwell.domain.community.dto.request.PostUpdateRequest;
 import com.dwell.domain.community.dto.response.PostCreateResponse;
+import com.dwell.domain.community.dto.response.PostLikeResponse;
 import com.dwell.domain.community.dto.response.PostUpdateResponse;
 
 public interface CommunityService {
@@ -39,4 +41,15 @@ public interface CommunityService {
      * @return PostUpdateResponse(postId)
      */
     PostUpdateResponse updatePost(Long postId, Long userId, PostUpdateRequest request);
+
+    /**
+     * [좋아요 / 좋아요 취소 서비스]
+     * @author 김민호
+     * @description: 내 건물 게시물에 좋아요를 누르거나 취소합니다. 같은 값을 여러 번 보내도 결과가 같습니다(멱등).
+     *               다른 건물 게시물은 없는 게시물로 처리합니다.
+     *
+     * @request postId, userId, PostLikeRequest(liked)
+     * @return PostLikeResponse(liked, likeCount)
+     */
+    PostLikeResponse likePost(Long postId, Long userId, PostLikeRequest request);
 }
