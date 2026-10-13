@@ -185,7 +185,7 @@ class CaseServiceTest {
         Case savedCase = caseCaptor.getValue();
         assertThat(savedCase.getTitle()).isEqualTo("Water Leak in Bathroom · Ceiling");
         assertThat(savedCase.getIssueType()).isEqualTo(IssueType.WATER_LEAK);
-        assertThat(savedCase.getVisibility()).isEqualTo(Visibility.PRIVATE);
+        assertThat(savedCase.getVisibility()).isEqualTo(Visibility.PUBLIC);
         assertThat(savedCase.getBuilding()).isEqualTo(building);
         assertThat(savedCase.getUnit()).isEqualTo("Apt 4B");
         assertThat(savedCase.getSeverity()).isNull();
@@ -652,7 +652,6 @@ class CaseServiceTest {
         ReflectionTestUtils.setField(request, "location", location);
         ReflectionTestUtils.setField(request, "affectedArea", affectedArea);
         ReflectionTestUtils.setField(request, "fileIds", List.of(101L));
-        ReflectionTestUtils.setField(request, "visibility", Visibility.PRIVATE);
         return request;
     }
 

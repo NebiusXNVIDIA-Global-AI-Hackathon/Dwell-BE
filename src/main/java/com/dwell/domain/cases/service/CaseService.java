@@ -15,6 +15,7 @@ import com.dwell.domain.cases.enums.CaseEventType;
 import com.dwell.domain.cases.enums.CaseStage;
 import com.dwell.domain.cases.enums.IssueDetail;
 import com.dwell.domain.cases.enums.SafetyAlert;
+import com.dwell.domain.cases.enums.Visibility;
 import com.dwell.domain.cases.exception.CaseErrorCode;
 import com.dwell.domain.cases.repository.CaseChecklistItemRepository;
 import com.dwell.domain.cases.repository.CaseEventRepository;
@@ -327,7 +328,7 @@ public class CaseService {
                         .affectedArea(request.getAffectedArea())
                         .affectedAreaOther(request.getAffectedAreaOther())
                         .stage(CaseStage.LOGGED)
-                        .visibility(request.getVisibility())
+                        .visibility(Visibility.PUBLIC) // 모든 케이스는 같은 건물 이웃에게 익명 공개 (Building Signal 집계)
                         .description(request.getDescription())
                         .safetyAcknowledged(request.isSafetyAcknowledged())
                         .analysisStatus(AnalysisStatus.PENDING)

@@ -1,7 +1,6 @@
 package com.dwell.domain.cases.dto.request;
 
 import com.dwell.domain.cases.enums.AffectedArea;
-import com.dwell.domain.cases.enums.Visibility;
 import com.dwell.global.common.enums.IssueCategory;
 import com.dwell.global.common.enums.Location;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -16,7 +15,7 @@ import java.util.List;
 
 @Getter
 @NoArgsConstructor
-@Schema(title = "케이스 생성 요청 DTO", description = "New Case 단계별 선택값, 증거 파일, 설명, 공개 설정")
+@Schema(title = "케이스 생성 요청 DTO", description = "New Case 단계별 선택값, 증거 파일, 설명")
 public class CaseCreateRequest {
 
     @Schema(description = "1단계 이슈 카테고리", example = "WATER_FLOODING")
@@ -55,10 +54,6 @@ public class CaseCreateRequest {
     // EVIDENCE_REQUIRED 에러 코드로 응답하려고 @NotEmpty 대신 서비스에서 검사
     @Schema(description = "POST /files로 올린 파일 ID (1개 이상)", example = "[101, 102, 103]")
     private List<Long> fileIds;
-
-    @Schema(description = "7단계 공개 설정 (PUBLIC: Building Signal에 익명 공유, PRIVATE: 나만 보기)", example = "PUBLIC")
-    @NotNull(message = "Visibility is a required field.")
-    private Visibility visibility;
 
     @Schema(description = "안전 경고에서 I'm Safe를 눌렀는지", example = "true")
     private boolean safetyAcknowledged;
