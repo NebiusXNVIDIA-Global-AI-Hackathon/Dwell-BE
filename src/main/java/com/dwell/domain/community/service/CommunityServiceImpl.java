@@ -5,6 +5,7 @@ import com.dwell.domain.building.repository.UserPlaceRepository;
 import com.dwell.domain.community.dto.request.PostCreateRequest;
 import com.dwell.domain.community.dto.request.PostLikeRequest;
 import com.dwell.domain.community.dto.request.PostUpdateRequest;
+import com.dwell.domain.community.dto.request.ReplyCreateRequest;
 import com.dwell.domain.community.dto.response.PostCreateResponse;
 import com.dwell.domain.community.dto.response.PostAuthorResponse;
 import com.dwell.domain.community.dto.response.PostDetailResponse;
@@ -12,6 +13,7 @@ import com.dwell.domain.community.dto.response.PostImageResponse;
 import com.dwell.domain.community.dto.response.PostLikeResponse;
 import com.dwell.domain.community.dto.response.PostUpdateResponse;
 import com.dwell.domain.community.dto.response.ReplyAuthorResponse;
+import com.dwell.domain.community.dto.response.ReplyCreateResponse;
 import com.dwell.domain.community.dto.response.ReplyResponse;
 import com.dwell.domain.community.entity.Post;
 import com.dwell.domain.community.entity.PostImage;
@@ -246,6 +248,32 @@ public class CommunityServiceImpl implements CommunityService {
                 .build();
     }
 
+    // 댓글 작성 서비스
+    @Override
+    @Transactional
+    public ReplyCreateResponse createReply(Long postId, Long userId, ReplyCreateRequest request) {
+
+        log.info("[CommunityService] 댓글 작성 서비스 - 시작: postId={}, userId={}", postId, userId);
+
+        // 내 집 + 내 건물 게시물 조회 (댓글 작성자 층 구간에 집 정보가 필요)
+        UserPlace place = userPlaceRepository.findByUserId(userId).orElse(null);
+        Post post = findPostInBuilding(postId, userId, place);
+
+        // 댓글 저장 (층은 Lower / Middle / Upper Floor로만)
+        Reply reply = replyRepository.save(Reply.builder()
+                .post(post)
+                .user(place.getUser())
+                .content(request.getContent().strip())
+                .floorBand(toFloorBand(place.getFloor()))
+                .build());
+
+        log.info("[CommunityService] 댓글 작성 서비스 - 완료: postId={}, replyId={}", postId, reply.getId());
+
+        return ReplyCreateResponse.builder()
+                .replyId(reply.getId())
+                .build();
+    }
+
     // 좋아요 / 좋아요 취소 서비스
     @Override
     @Transactional
@@ -294,16 +322,18 @@ public class CommunityServiceImpl implements CommunityService {
 
     // 내 건물 게시물 조회 (게시판은 건물 단위라 다른 건물 글·집 미등록이면 없는 글로 처리)
     private Post findPostInMyBuilding(Long postId, Long userId) {
+        return findPostInBuilding(postId, userId, userPlaceRepository.findByUserId(userId).orElse(null));
+    }
+
+    // 게시물 조회 + 내 집(place)과 같은 건물인지 확인 (place가 null이면 집 미등록)
+    private Post findPostInBuilding(Long postId, Long userId, UserPlace place) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> {
                     log.warn("[CommunityService] 게시물 조회 실패 - 존재하지 않는 게시물: postId={}", postId);
                     return new CustomException(CommunityErrorCode.POST_NOT_FOUND);
                 });
 
-        boolean sameBuilding = userPlaceRepository.findByUserId(userId)
-                .map(place -> place.getBuilding().getId().equals(post.getBuilding().getId()))
-                .orElse(false);
-        if (!sameBuilding) {
+        if (place == null || !place.getBuilding().getId().equals(post.getBuilding().getId())) {
             log.warn("[CommunityService] 게시물 조회 실패 - 다른 건물 게시물 접근 시도: postId={}, userId={}", postId, userId);
             throw new CustomException(CommunityErrorCode.POST_NOT_FOUND);
         }
