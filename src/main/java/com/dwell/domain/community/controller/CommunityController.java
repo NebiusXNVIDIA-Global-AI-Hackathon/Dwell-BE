@@ -7,6 +7,7 @@ import com.dwell.domain.community.dto.request.ReplyCreateRequest;
 import com.dwell.domain.community.dto.response.PostCreateResponse;
 import com.dwell.domain.community.dto.response.PostDetailResponse;
 import com.dwell.domain.community.dto.response.PostListResponse;
+import com.dwell.domain.community.dto.response.TagSuggestionResponse;
 import com.dwell.domain.community.enums.BoardFilter;
 import com.dwell.domain.community.dto.response.PostLikeResponse;
 import com.dwell.domain.community.dto.response.PostUpdateResponse;
@@ -104,6 +105,23 @@ public class CommunityController {
 
         // 응답 변환
         return ResponseEntity.ok(BaseResponse.success(200, "Posts retrieved.", response));
+    }
+
+    // 태그 자동완성 컨트롤러
+    @Operation(summary = "태그 자동완성",
+            description = "내 건물 게시물 태그 중 q로 시작하는 태그를 추천합니다 (# 없어도 됨, 최대 10개). "
+                    + "exactMatch=false면 + Create new tag를 보여주세요. withTitles=true(검색창)면 제목 추천도 최대 5개 줍니다.")
+    @GetMapping("/tags")
+    public ResponseEntity<BaseResponse<TagSuggestionResponse>> suggestTags(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "false") boolean withTitles) {
+
+        // 태그 자동완성 서비스 호출
+        TagSuggestionResponse response = communityService.suggestTags(userDetails.getUser().getId(), q, withTitles);
+
+        // 응답 변환
+        return ResponseEntity.ok(BaseResponse.success(200, "Tags retrieved.", response));
     }
 
     // 게시물 상세 컨트롤러
