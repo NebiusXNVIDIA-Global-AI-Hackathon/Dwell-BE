@@ -3,8 +3,10 @@ package com.dwell.domain.community.service;
 import com.dwell.domain.building.entity.UserPlace;
 import com.dwell.domain.building.repository.UserPlaceRepository;
 import com.dwell.domain.community.dto.request.PostCreateRequest;
+import com.dwell.domain.community.dto.request.PostLikeRequest;
 import com.dwell.domain.community.dto.request.PostUpdateRequest;
 import com.dwell.domain.community.dto.response.PostCreateResponse;
+import com.dwell.domain.community.dto.response.PostLikeResponse;
 import com.dwell.domain.community.dto.response.PostUpdateResponse;
 import com.dwell.domain.community.entity.Post;
 import com.dwell.domain.community.entity.PostImage;
@@ -12,6 +14,7 @@ import com.dwell.domain.community.entity.PostTag;
 import com.dwell.domain.community.entity.Tag;
 import com.dwell.domain.community.exception.CommunityErrorCode;
 import com.dwell.domain.community.repository.PostImageRepository;
+import com.dwell.domain.community.repository.PostLikeRepository;
 import com.dwell.domain.community.repository.PostRepository;
 import com.dwell.domain.community.repository.PostTagRepository;
 import com.dwell.domain.community.repository.TagRepository;
@@ -46,6 +49,7 @@ public class CommunityServiceImpl implements CommunityService {
     private final TagRepository tagRepository;
     private final PostTagRepository postTagRepository;
     private final PostImageRepository postImageRepository;
+    private final PostLikeRepository postLikeRepository;
     private final UserPlaceRepository userPlaceRepository;
     private final FileRepository fileRepository;
     private final FileService fileService;
@@ -171,6 +175,46 @@ public class CommunityServiceImpl implements CommunityService {
 
         return PostUpdateResponse.builder()
                 .postId(post.getId())
+                .build();
+    }
+
+    // 좋아요 / 좋아요 취소 서비스
+    @Override
+    @Transactional
+    public PostLikeResponse likePost(Long postId, Long userId, PostLikeRequest request) {
+
+        log.info("[CommunityService] 좋아요 서비스 - 시작: postId={}, userId={}, liked={}", postId, userId, request.getLiked());
+
+        // 게시물 조회
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> {
+                    log.warn("[CommunityService] 좋아요 서비스 - 존재하지 않는 게시물: postId={}", postId);
+                    return new CustomException(CommunityErrorCode.POST_NOT_FOUND);
+                });
+
+        // 내 건물 게시물인지 확인 (게시판은 건물 단위, 다른 건물 글은 없는 글로 처리)
+        boolean sameBuilding = userPlaceRepository.findByUserId(userId)
+                .map(place -> place.getBuilding().getId().equals(post.getBuilding().getId()))
+                .orElse(false);
+        if (!sameBuilding) {
+            log.warn("[CommunityService] 좋아요 서비스 - 다른 건물 게시물 접근 시도: postId={}, userId={}", postId, userId);
+            throw new CustomException(CommunityErrorCode.POST_NOT_FOUND);
+        }
+
+        // 좋아요 추가 / 취소 (이미 그 상태면 아무 일 없음)
+        if (request.getLiked()) {
+            postLikeRepository.insertIgnore(postId, userId);
+        } else {
+            postLikeRepository.deleteByPostIdAndUserId(postId, userId);
+        }
+
+        long likeCount = postLikeRepository.countByIdPostId(postId);
+
+        log.info("[CommunityService] 좋아요 서비스 - 완료: postId={}, liked={}, likeCount={}", postId, request.getLiked(), likeCount);
+
+        return PostLikeResponse.builder()
+                .liked(request.getLiked())
+                .likeCount(likeCount)
                 .build();
     }
 
