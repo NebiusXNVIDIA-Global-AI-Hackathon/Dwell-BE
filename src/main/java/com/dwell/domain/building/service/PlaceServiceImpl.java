@@ -1,6 +1,7 @@
 package com.dwell.domain.building.service;
 
 import com.dwell.domain.building.dto.request.InspectionCreateRequest;
+import com.dwell.domain.building.dto.request.PlaceUpdateRequest;
 import com.dwell.domain.building.dto.response.BuildingSignalsResponse;
 import com.dwell.domain.building.dto.response.CategoryCountResponse;
 import com.dwell.domain.building.dto.response.FollowUpTimerResponse;
@@ -102,6 +103,7 @@ public class PlaceServiceImpl implements PlaceService {
     private final InspectionResultRepository inspectionResultRepository;
     private final CaseRepository caseRepository;
     private final CommunityService communityService;
+    private final BuildingService buildingService;
 
     // 내 건물 요약 서비스
     @Override
@@ -124,6 +126,33 @@ public class PlaceServiceImpl implements PlaceService {
                 .bbl(building.getBbl())
                 .risingIssues(toRisingIssues(signals, primary))
                 .build();
+    }
+
+    // 집 주소 변경
+    @Override
+    @Transactional
+    public PlaceSummaryResponse updatePlace(Long userId, PlaceUpdateRequest request) {
+
+        // 내 집 조회
+        UserPlace place = findPlace(userId);
+
+        // BBL로 건물 조회, 없으면 새로 생성
+        Building building = buildingService.findOrCreate(
+                request.getBbl(),
+                request.getStreet(),
+                request.getCity(),
+                request.getState(),
+                request.getZip()
+        );
+
+        // 집 주소 변경 (기존 케이스는 케이스에 저장된 건물,호수 그대로라 이전 주소에 남음)
+        place.changeHome(building, request.getUnit());
+
+        // 로그 출력
+        log.info("[PlaceService] Home address changed: userId={}, buildingId={}", userId, building.getId());
+
+        // 응답 반환 (바뀐 집 기준 내 건물 요약)
+        return getSummary(userId);
     }
 
     // Building Signals 목록 서비스

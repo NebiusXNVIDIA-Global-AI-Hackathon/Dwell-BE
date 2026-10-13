@@ -1,6 +1,7 @@
 package com.dwell.domain.building.service;
 
 import com.dwell.domain.building.dto.request.InspectionCreateRequest;
+import com.dwell.domain.building.dto.request.PlaceUpdateRequest;
 import com.dwell.domain.building.dto.response.BuildingSignalsResponse;
 import com.dwell.domain.building.dto.response.HpdHistoryResponse;
 import com.dwell.domain.building.dto.response.InspectionCreateResponse;
@@ -22,6 +23,17 @@ public interface PlaceService {
      * @return PlaceSummaryResponse(address, bbl, risingIssues)
      */
     PlaceSummaryResponse getSummary(Long userId);
+
+    /**
+     * [집 주소 변경 서비스]
+     * @author 김정모
+     * @description: My Home 화면에서 집 주소를 바꿉니다. BBL로 건물을 찾거나 만들고 UserPlace만 교체합니다.
+     *               기존 케이스는 케이스에 저장된 건물·호수 그대로라 이전 주소에 남습니다.
+     *
+     * @request userId, PlaceUpdateRequest(street, unit, city, state, zip, bbl)
+     * @return PlaceSummaryResponse(address, bbl, risingIssues)
+     */
+    PlaceSummaryResponse updatePlace(Long userId, PlaceUpdateRequest request);
 
     /**
      * [Building Signals 목록 서비스]

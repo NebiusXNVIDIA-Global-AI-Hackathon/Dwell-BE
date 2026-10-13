@@ -1,9 +1,11 @@
 package com.dwell.domain.building.service;
 
 import com.dwell.domain.building.dto.request.InspectionCreateRequest;
+import com.dwell.domain.building.dto.request.PlaceUpdateRequest;
 import com.dwell.domain.building.dto.response.BuildingSignalsResponse;
 import com.dwell.domain.building.dto.response.HpdHistoryResponse;
 import com.dwell.domain.building.dto.response.LandlordInsightResponse;
+import com.dwell.domain.building.dto.response.PlaceSummaryResponse;
 import com.dwell.domain.building.dto.response.RecordsInsightResponse;
 import com.dwell.domain.building.dto.response.SignalDetailResponse;
 import com.dwell.domain.building.dto.response.SignalItemResponse;
@@ -18,6 +20,7 @@ import com.dwell.domain.building.enums.HpdRecordType;
 import com.dwell.domain.building.enums.HpdStatus;
 import com.dwell.domain.building.enums.InsightStatus;
 import com.dwell.domain.building.enums.LandlordRating;
+import com.dwell.domain.building.enums.UsState;
 import com.dwell.domain.building.exception.BuildingErrorCode;
 import com.dwell.domain.building.repository.BuildingSignalRepository;
 import com.dwell.domain.building.repository.HpdViolationRepository;
@@ -34,6 +37,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -44,6 +48,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -62,13 +67,15 @@ class PlaceServiceImplTest {
     private CaseRepository caseRepository;
     @Mock
     private CommunityService communityService;
+    @Mock
+    private BuildingService buildingService;
 
     private PlaceServiceImpl placeService;
 
     @BeforeEach
     void setUp() {
         placeService = new PlaceServiceImpl(userPlaceRepository, buildingSignalRepository, hpdViolationRepository,
-                inspectionResultRepository, caseRepository, communityService);
+                inspectionResultRepository, caseRepository, communityService, buildingService);
     }
 
     @Test
@@ -251,6 +258,69 @@ class PlaceServiceImplTest {
         assertThat(response.getViolationsByClass().get(2).getOpen()).isEqualTo(1);
         assertThat(response.getPerQuarter()).hasSize(12);
         assertThat(response.getContent()).isNull();
+    }
+
+    @Test
+    @DisplayName("집 주소 변경: 새 건물로 교체, 층·집주인 정보 초기화, 바뀐 주소로 요약 반환")
+    void updatePlace() {
+        Building oldBuilding = realBuilding(10L, "100 Old St");
+        UserPlace place = UserPlace.builder()
+                .building(oldBuilding)
+                .unit("Apt 1A")
+                .floor(1)
+                .unitLine("A")
+                .leaseInOwnName(true)
+                .landlordName("Old Landlord")
+                .build();
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.of(place));
+        Building newBuilding = realBuilding(20L, "254 W 107th St");
+        given(buildingService.findOrCreate("1018790031", "254 W 107th St", "New York", UsState.NY, "10025")).willReturn(newBuilding);
+        given(buildingSignalRepository.findAllByBuildingIdOrderByReportCountDescComputedAtDescIdDesc(20L)).willReturn(List.of());
+        lenient().when(caseRepository.findActiveIssueCategoriesByUserId(1L)).thenReturn(List.of());
+
+        PlaceSummaryResponse response = placeService.updatePlace(1L, updateRequest("Apt 4B"));
+
+        assertThat(place.getBuilding()).isSameAs(newBuilding);
+        assertThat(place.getUnit()).isEqualTo("Apt 4B");
+        assertThat(place.getFloor()).isNull();
+        assertThat(place.getUnitLine()).isNull();
+        assertThat(place.getLandlordName()).isNull();
+        assertThat(response.getAddress()).isEqualTo("254 W 107th St, Apt 4B, New York, NY 10025");
+        assertThat(response.getBbl()).isEqualTo("1018790031");
+    }
+
+    @Test
+    @DisplayName("집 주소 변경: 등록된 집이 없으면 PLACE_NOT_REGISTERED, 건물 생성 X")
+    void updatePlaceNotRegistered() {
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> placeService.updatePlace(1L, updateRequest("Apt 4B")))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(BuildingErrorCode.PLACE_NOT_REGISTERED);
+        verifyNoInteractions(buildingService);
+    }
+
+    private Building realBuilding(Long id, String street) {
+        Building building = Building.builder()
+                .bbl("1018790031")
+                .street(street)
+                .city("New York")
+                .state(UsState.NY)
+                .zip("10025")
+                .build();
+        ReflectionTestUtils.setField(building, "id", id);
+        return building;
+    }
+
+    private PlaceUpdateRequest updateRequest(String unit) {
+        PlaceUpdateRequest request = new PlaceUpdateRequest();
+        ReflectionTestUtils.setField(request, "street", "254 W 107th St");
+        ReflectionTestUtils.setField(request, "unit", unit);
+        ReflectionTestUtils.setField(request, "city", "New York");
+        ReflectionTestUtils.setField(request, "state", UsState.NY);
+        ReflectionTestUtils.setField(request, "zip", "10025");
+        ReflectionTestUtils.setField(request, "bbl", "1018790031");
+        return request;
     }
 
     private UserPlace placeIn(Long buildingId) {

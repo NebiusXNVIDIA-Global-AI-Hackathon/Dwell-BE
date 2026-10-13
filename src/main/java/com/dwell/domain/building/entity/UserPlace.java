@@ -60,4 +60,14 @@ public class UserPlace extends BaseTimeEntity {
         this.landlordName = landlordName;
         this.landlordPhone = landlordPhone;
     }
+
+    // 집 주소 변경 (층·라인·집주인 정보는 이전 집 기준이라 비움)
+    public void changeHome(Building building, String unit) {
+        this.building = building;
+        this.unit = unit;
+        this.floor = null;
+        this.unitLine = null;
+        this.landlordName = null;
+        this.landlordPhone = null;
+    }
 }
