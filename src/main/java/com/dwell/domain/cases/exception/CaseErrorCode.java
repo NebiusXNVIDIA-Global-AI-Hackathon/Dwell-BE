@@ -18,7 +18,10 @@ public enum CaseErrorCode implements BaseErrorCode {
     INVALID_AFFECTED_AREA("C007", "The affected area is not available for the selected location.", HttpStatus.BAD_REQUEST),
     OTHER_TEXT_REQUIRED("C008", "Please enter a value when Other is selected.", HttpStatus.BAD_REQUEST),
     EVIDENCE_REQUIRED("C009", "At least one evidence file is required.", HttpStatus.BAD_REQUEST),
-    INVALID_ISSUE_DETAIL("C010", "The specific issue is not available for the selected issue category.", HttpStatus.BAD_REQUEST);
+    INVALID_ISSUE_DETAIL("C010", "The specific issue is not available for the selected issue category.", HttpStatus.BAD_REQUEST),
+    CHECKLIST_ITEM_NOT_FOUND("C011", "Checklist item not found.", HttpStatus.NOT_FOUND),
+    EMPTY_CHECKLIST_UPDATE("C012", "Provide checked or text to update.", HttpStatus.BAD_REQUEST),
+    INVALID_CHECKLIST_TEXT("C013", "Checklist text must be 1 to 100 characters.", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

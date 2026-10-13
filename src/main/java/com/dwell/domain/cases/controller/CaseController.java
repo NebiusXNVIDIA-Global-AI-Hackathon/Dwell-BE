@@ -3,10 +3,14 @@ package com.dwell.domain.cases.controller;
 import com.dwell.domain.cases.dto.request.CaseCreateRequest;
 import com.dwell.domain.cases.dto.request.CaseEventCreateRequest;
 import com.dwell.domain.cases.dto.request.CaseEvidenceAddRequest;
+import com.dwell.domain.cases.dto.request.ChecklistItemCreateRequest;
+import com.dwell.domain.cases.dto.request.ChecklistItemUpdateRequest;
 import com.dwell.domain.cases.dto.response.CaseCreateResponse;
 import com.dwell.domain.cases.dto.response.CaseOptionsResponse;
 import com.dwell.domain.cases.dto.response.CaseOverviewResponse;
 import com.dwell.domain.cases.dto.response.CaseTimelineResponse;
+import com.dwell.domain.cases.dto.response.ChecklistItemResponse;
+import com.dwell.domain.cases.service.CaseChecklistService;
 import com.dwell.domain.cases.service.CaseEventService;
 import com.dwell.domain.cases.service.CaseService;
 import com.dwell.global.common.BaseResponse;
@@ -20,6 +24,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -34,6 +39,7 @@ public class CaseController {
 
     private final CaseService caseService;
     private final CaseEventService caseEventService;
+    private final CaseChecklistService caseChecklistService;
 
     // 케이스 입력 옵션
     @Operation(summary = "케이스 입력 옵션 API", description = "New Case 선택지(이슈 카테고리·세부 이슈·공간·부위), 안전 경고 문구, 증거 촬영 가이드를 조회하는 API")
@@ -85,6 +91,52 @@ public class CaseController {
         return ResponseEntity
                 .status(HttpStatus.OK)
                 .body(BaseResponse.success(200, "Case event recorded successfully.", response));
+    }
+
+    // 체크리스트 항목 추가
+    @Operation(summary = "체크리스트 항목 추가 API", description = "케이스에 사용자 체크리스트 항목(source=USER)을 추가하는 API. 앞뒤 공백은 제거되고, 새 항목은 맨 아래에 붙음")
+    @PostMapping("/{caseId}/checklist-items")
+    public ResponseEntity<BaseResponse<ChecklistItemResponse>> addChecklistItem(
+            @AuthenticationPrincipal CustomUserDetails customUserDetails,
+            @PathVariable Long caseId,
+            @Valid @RequestBody ChecklistItemCreateRequest request) {
+
+        // service 호출
+        ChecklistItemResponse response = caseChecklistService.addItem(caseId, customUserDetails.getUser().getId(), request);
+
+        // 응답 반환
+        return ResponseEntity.status(HttpStatus.CREATED).body(BaseResponse.success(201, "Checklist item added successfully.", response));
+    }
+
+    // 체크리스트 항목 수정
+    @Operation(summary = "체크리스트 항목 수정 API", description = "체크리스트 항목의 체크 여부 또는 문구를 수정하는 API (보낸 값만 수정, 둘 다 생략하면 400). AI 항목도 문구 수정이 가능하며, 문구가 바뀌면 번역본은 비워지고 source는 AI로 유지")
+    @PatchMapping("/{caseId}/checklist-items/{itemId}")
+    public ResponseEntity<BaseResponse<ChecklistItemResponse>> updateChecklistItem(
+            @AuthenticationPrincipal CustomUserDetails customUserDetails,
+            @PathVariable Long caseId,
+            @PathVariable Long itemId,
+            @Valid @RequestBody ChecklistItemUpdateRequest request) {
+
+        // service 호출
+        ChecklistItemResponse response = caseChecklistService.updateItem(caseId, itemId, customUserDetails.getUser().getId(), request);
+
+        // 응답 반환
+        return ResponseEntity.status(HttpStatus.OK).body(BaseResponse.success(200, "Checklist item updated successfully.", response));
+    }
+
+    // 체크리스트 항목 삭제
+    @Operation(summary = "체크리스트 항목 삭제 API", description = "체크리스트 항목을 영구 삭제하는 API. AI 항목과 사용자 항목 모두 삭제 가능")
+    @DeleteMapping("/{caseId}/checklist-items/{itemId}")
+    public ResponseEntity<Void> deleteChecklistItem(
+            @AuthenticationPrincipal CustomUserDetails customUserDetails,
+            @PathVariable Long caseId,
+            @PathVariable Long itemId) {
+
+        // service 호출
+        caseChecklistService.deleteItem(caseId, itemId, customUserDetails.getUser().getId());
+
+        // 응답 반환
+        return ResponseEntity.noContent().build();
     }
 
     // 케이스 생성

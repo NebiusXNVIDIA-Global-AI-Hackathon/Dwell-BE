@@ -152,7 +152,7 @@ public class CaseService {
         return response;
     }
 
-    // 본인 케이스 조회 (삭제된 케이스 제외) - 케이스 이벤트 기록에서도 사용
+    // 본인 케이스 조회 (삭제된 케이스 제외) - 케이스 이벤트 기록·체크리스트에서도 사용
     public Case findOwnedCase(Long caseId, Long userId) {
 
         // DB에서 케이스 조회 (삭제된 케이스 제외)
