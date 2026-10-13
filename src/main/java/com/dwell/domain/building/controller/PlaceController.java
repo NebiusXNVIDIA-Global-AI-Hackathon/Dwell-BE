@@ -1,6 +1,7 @@
 package com.dwell.domain.building.controller;
 
 import com.dwell.domain.building.dto.request.InspectionCreateRequest;
+import com.dwell.domain.building.dto.request.PlaceUpdateRequest;
 import com.dwell.domain.building.dto.response.BuildingSignalsResponse;
 import com.dwell.domain.building.dto.response.HpdHistoryResponse;
 import com.dwell.domain.building.dto.response.InspectionCreateResponse;
@@ -29,6 +30,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -55,6 +57,21 @@ public class PlaceController {
 
         // 응답 변환
         return ResponseEntity.ok(BaseResponse.success(200, "Place summary retrieved.", response));
+    }
+
+    // 집 주소 변경 컨트롤러
+    @Operation(summary = "집 주소 변경",
+            description = "My Home 화면에서 집 주소를 바꾸고, 바뀐 집 기준 내 건물 요약을 줍니다. 기존 케이스는 이전 주소에 남습니다.")
+    @PutMapping
+    public ResponseEntity<BaseResponse<PlaceSummaryResponse>> updatePlace(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @Valid @RequestBody PlaceUpdateRequest request) {
+
+        // 집 주소 변경 서비스 호출
+        PlaceSummaryResponse response = placeService.updatePlace(userDetails.getUser().getId(), request);
+
+        // 응답 변환
+        return ResponseEntity.ok(BaseResponse.success(200, "Home address updated.", response));
     }
 
     // Building Signals 목록 컨트롤러
