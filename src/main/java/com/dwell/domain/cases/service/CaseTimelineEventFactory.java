@@ -4,7 +4,6 @@ import com.dwell.domain.cases.dto.response.CaseTimelineEventResponse;
 import com.dwell.domain.cases.entity.CaseEvent;
 import com.dwell.domain.cases.enums.CaseEventType;
 import com.dwell.domain.evidence.entity.Evidence;
-import com.dwell.domain.evidence.enums.EvidencePhase;
 import com.dwell.domain.file.entity.File;
 import com.dwell.domain.notice.entity.Notice;
 import com.dwell.domain.notice.enums.NoticeChannel;
@@ -21,15 +20,17 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /*
 Case Timeline 상세 카드 생성 (와프 찐최종 321:11015 기준)
 설명 문장은 저장하지 않고 조회 시 템플릿으로 생성 (값은 이벤트 payload의 기록 시점 값 사용)
-생성 때 올린 증거(INITIAL)는 Case Created 카드에 합침. 사진·영상 개수는 파일 단위 (증거 1건 = 파일 여러 개)
+생성 때 올린 증거(EVIDENCE_ADDED 이벤트가 없는 증거)는 Case Created 카드에 합침. 나중에 추가한 증거는 Evidence Added 카드. 사진·영상 개수는 파일 단위 (증거 1건 = 파일 여러 개)
  */
 @Component
 public class CaseTimelineEventFactory {
@@ -62,16 +63,21 @@ public class CaseTimelineEventFactory {
             noticeById.put(notice.getId(), notice);
         }
 
-        // 1. 생성 때 올린 증거 → Case Created 카드로 (Case Created 이벤트가 없으면 따로 표시)
+        // 1. 생성 때 올린 증거 = EVIDENCE_ADDED 이벤트가 없는 증거 → Case Created 카드로 (phase 무관, Case Created 이벤트가 없으면 표시 X)
         CaseEvent createdEvent = events.stream()
                 .filter(event -> event.getType() == CaseEventType.CASE_CREATED)
                 .findFirst()
                 .orElse(null);
+        Set<Long> addedEvidenceIds = new HashSet<>();
+        for (CaseEvent event : events) {
+            if (event.getType() == CaseEventType.EVIDENCE_ADDED && event.getRefId() != null) {
+                addedEvidenceIds.add(event.getRefId());
+            }
+        }
         List<Evidence> initialEvidences = new ArrayList<>();
         if (createdEvent != null) {
-            for (CaseEvent event : events) {
-                Evidence evidence = evidenceOf(event, evidenceById);
-                if (evidence != null && evidence.getPhase() == EvidencePhase.INITIAL) {
+            for (Evidence evidence : evidences) {
+                if (!addedEvidenceIds.contains(evidence.getId())) {
                     initialEvidences.add(evidence);
                 }
             }
@@ -83,8 +89,8 @@ public class CaseTimelineEventFactory {
         for (CaseEvent event : events) {
             if (event.getType() == CaseEventType.EVIDENCE_ADDED) {
                 Evidence evidence = evidenceOf(event, evidenceById);
-                // 삭제된 증거, Case Created에 합친 증거는 카드 X
-                if (evidence == null || initialEvidences.contains(evidence)) {
+                // 삭제된 증거는 카드 X (나중에 추가한 증거는 phase와 상관없이 항상 별도 카드)
+                if (evidence == null) {
                     continue;
                 }
                 responses.add(toResponse(event, event.getType().getLabel(), toEvidenceAddedDescription(evidence, filesByEvidenceId), List.of(evidence.getId())));

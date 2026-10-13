@@ -36,7 +36,7 @@ class CaseTimelineEventFactoryTest {
     private final Case caseEntity = newCase(CaseStage.AWAITING_RESPONSE);
 
     @Test
-    @DisplayName("와프 예시: 생성 증거는 Case Created에 합치고, 통지 카드 제목은 'Landlord Notified'")
+    @DisplayName("와프 예시: 생성 증거(이벤트 없는 증거)는 Case Created에 합치고, 통지 카드 제목은 'Landlord Notified'")
     void wireframeExample() {
         Evidence photo1 = evidence(6L, MediaType.PHOTO, EvidencePhase.INITIAL);
         Evidence photo2 = evidence(7L, MediaType.PHOTO, EvidencePhase.INITIAL);
@@ -47,7 +47,6 @@ class CaseTimelineEventFactoryTest {
 
         List<CaseEvent> events = List.of(
                 event(1L, CaseEventType.CASE_CREATED, CREATED, null, null),
-                evidenceAdded(2L, 6L), evidenceAdded(3L, 7L), evidenceAdded(4L, 8L),
                 event(5L, CaseEventType.NOTICE_SENT, NOTIFIED, 7L, Map.of("recipientName", "John Smith")));
 
         List<CaseTimelineEventResponse> cards = factory.create(events, List.of(photo1, photo2, video), List.of(), List.of(notice));
@@ -66,7 +65,7 @@ class CaseTimelineEventFactoryTest {
     void countsFiles() {
         Evidence multi = evidence(6L, MediaType.MULTI, EvidencePhase.INITIAL);
         List<File> files = List.of(file(multi, MediaType.PHOTO), file(multi, MediaType.PHOTO), file(multi, MediaType.VIDEO));
-        List<CaseEvent> events = List.of(event(1L, CaseEventType.CASE_CREATED, CREATED, null, null), evidenceAdded(2L, 6L));
+        List<CaseEvent> events = List.of(event(1L, CaseEventType.CASE_CREATED, CREATED, null, null));
 
         List<CaseTimelineEventResponse> cards = factory.create(events, List.of(multi), files, List.of());
 
@@ -103,6 +102,52 @@ class CaseTimelineEventFactoryTest {
         assertThat(cards.get(0).getDescription().en()).isEqualTo("You documented the issue.");
         assertThat(cards.get(1).getDescription().en()).isEqualTo("You added 1 photo after the repair.");
         assertThat(cards.get(1).getEvidenceIds()).containsExactly(9L);
+    }
+
+    @Test
+    @DisplayName("생성 증거: EVIDENCE_ADDED 이벤트가 없는 증거는 phase와 상관없이 Case Created에 합치고 카드는 추가되지 않음")
+    void creationEvidenceWithoutEvent() {
+        Evidence photo1 = evidence(6L, MediaType.PHOTO, EvidencePhase.INITIAL);
+        Evidence photo2 = evidence(7L, MediaType.PHOTO, null);
+        Evidence video = evidence(8L, MediaType.VIDEO, EvidencePhase.INITIAL);
+        List<CaseEvent> events = List.of(event(1L, CaseEventType.CASE_CREATED, CREATED, null, null));
+
+        List<CaseTimelineEventResponse> cards = factory.create(events, List.of(photo1, photo2, video), List.of(), List.of());
+
+        assertThat(cards).hasSize(1);
+        assertThat(cards.get(0).getEvidenceIds()).containsExactly(6L, 7L, 8L);
+        assertThat(cards.get(0).getDescription().en()).isEqualTo("You documented the issue with 2 photos and 1 video.");
+    }
+
+    @Test
+    @DisplayName("나중에 추가한 증거는 phase가 INITIAL이어도 Evidence Added 카드 따로, Case Created는 생성 증거만 셈")
+    void laterInitialEvidence() {
+        Evidence created = evidence(6L, MediaType.PHOTO, EvidencePhase.INITIAL);
+        Evidence later = evidence(9L, MediaType.PHOTO, EvidencePhase.INITIAL);
+        List<CaseEvent> events = List.of(
+                event(1L, CaseEventType.CASE_CREATED, CREATED, null, null),
+                evidenceAdded(2L, 9L));
+
+        List<CaseTimelineEventResponse> cards = factory.create(events, List.of(created, later), List.of(), List.of());
+
+        assertThat(cards).extracting(card -> card.getType()).containsExactly(CaseEventType.CASE_CREATED, CaseEventType.EVIDENCE_ADDED);
+        assertThat(cards.get(0).getEvidenceIds()).containsExactly(6L);
+        assertThat(cards.get(0).getDescription().en()).isEqualTo("You documented the issue with 1 photo.");
+        assertThat(cards.get(1).getEvidenceIds()).containsExactly(9L);
+        assertThat(cards.get(1).getDescription().en()).isEqualTo("You added 1 photo.");
+    }
+
+    @Test
+    @DisplayName("나중에 추가한 증거가 삭제됐으면(증거 목록에 없으면) 카드 X")
+    void laterEvidenceDeleted() {
+        List<CaseEvent> events = List.of(
+                event(1L, CaseEventType.CASE_CREATED, CREATED, null, null),
+                evidenceAdded(2L, 99L));
+
+        List<CaseTimelineEventResponse> cards = factory.create(events, List.of(), List.of(), List.of());
+
+        assertThat(cards).extracting(card -> card.getType()).containsExactly(CaseEventType.CASE_CREATED);
+        assertThat(cards.get(0).getEvidenceIds()).isEmpty();
     }
 
     @Test
