@@ -6,6 +6,8 @@ import com.dwell.domain.community.dto.request.PostUpdateRequest;
 import com.dwell.domain.community.dto.request.ReplyCreateRequest;
 import com.dwell.domain.community.dto.response.PostCreateResponse;
 import com.dwell.domain.community.dto.response.PostDetailResponse;
+import com.dwell.domain.community.dto.response.PostListResponse;
+import com.dwell.domain.community.enums.BoardFilter;
 import com.dwell.domain.community.dto.response.PostLikeResponse;
 import com.dwell.domain.community.dto.response.PostUpdateResponse;
 import com.dwell.domain.community.dto.response.ReplyCreateResponse;
@@ -44,6 +46,18 @@ public interface CommunityService {
      * @return PostUpdateResponse(postId)
      */
     PostUpdateResponse updatePost(Long postId, Long userId, PostUpdateRequest request);
+
+    /**
+     * [게시물 목록·검색 서비스]
+     * @author 김민호
+     * @description: 내 건물 게시물을 탭(RECOMMENDED / FREE / TIPS)·제목·태그로 조회합니다.
+     *               RECOMMENDED는 내 진행 중 케이스와 관련된 태그가 있는 글 -> 좋아요 많은 글 -> 최신 순이고,
+     *               FREE·TIPS는 최신 순입니다. 태그로 검색하면 tagSummary(글 수, 내 케이스 관련 글 수)를 함께 줍니다.
+     *
+     * @request userId, board, q, tag, page, size
+     * @return PostListResponse(tagSummary, content, page, size, totalElements, hasNext)
+     */
+    PostListResponse getPosts(Long userId, BoardFilter board, String q, String tag, int page, int size);
 
     /**
      * [게시물 상세 서비스]

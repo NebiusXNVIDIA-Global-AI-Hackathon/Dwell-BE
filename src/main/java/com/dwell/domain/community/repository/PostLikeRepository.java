@@ -6,6 +6,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
+import java.util.Collection;
+import java.util.List;
+
 public interface PostLikeRepository extends JpaRepository<PostLike, PostLikeId> {
 
     // 좋아요 추가 (이미 있으면 무시 -> 연타·동시 요청에도 PK 충돌 없음)
@@ -21,6 +24,10 @@ public interface PostLikeRepository extends JpaRepository<PostLike, PostLikeId> 
 
     // 게시물 좋아요 수
     long countByIdPostId(Long postId);
+
+    // 여러 게시물의 좋아요 수 (목록용, [postId, count])
+    @Query("select pl.id.postId, count(pl) from PostLike pl where pl.id.postId in :postIds group by pl.id.postId")
+    List<Object[]> countByPostIds(Collection<Long> postIds);
 
     // 내가 좋아요 눌렀는지
     boolean existsByIdPostIdAndIdUserId(Long postId, Long userId);

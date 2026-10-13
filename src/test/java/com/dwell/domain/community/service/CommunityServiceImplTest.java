@@ -3,6 +3,7 @@ package com.dwell.domain.community.service;
 import com.dwell.domain.building.entity.Building;
 import com.dwell.domain.building.entity.UserPlace;
 import com.dwell.domain.building.repository.UserPlaceRepository;
+import com.dwell.domain.cases.repository.CaseRepository;
 import com.dwell.domain.community.dto.request.PostLikeRequest;
 import com.dwell.domain.community.dto.request.ReplyCreateRequest;
 import com.dwell.domain.community.dto.response.PostDetailResponse;
@@ -10,6 +11,11 @@ import com.dwell.domain.community.dto.response.PostLikeResponse;
 import com.dwell.domain.community.dto.response.ReplyResponse;
 import com.dwell.domain.community.entity.Reply;
 import com.dwell.domain.community.enums.Board;
+import com.dwell.domain.community.enums.BoardFilter;
+import com.dwell.domain.community.dto.response.PostListResponse;
+import com.dwell.global.common.enums.IssueCategory;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import com.dwell.domain.community.entity.Post;
 import com.dwell.domain.community.exception.CommunityErrorCode;
 import com.dwell.domain.community.repository.PostImageRepository;
@@ -40,6 +46,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
@@ -66,13 +74,15 @@ class CommunityServiceImplTest {
     private FileService fileService;
     @Mock
     private S3Uploader s3Uploader;
+    @Mock
+    private CaseRepository caseRepository;
 
     private CommunityServiceImpl communityService;
 
     @BeforeEach
     void setUp() {
         communityService = new CommunityServiceImpl(postRepository, tagRepository, postTagRepository, postImageRepository,
-                postLikeRepository, replyRepository, userPlaceRepository, fileRepository, fileService, s3Uploader);
+                postLikeRepository, replyRepository, userPlaceRepository, fileRepository, fileService, s3Uploader, caseRepository);
     }
 
     @Test
@@ -197,6 +207,53 @@ class CommunityServiceImplTest {
         verify(postLikeRepository, never()).insertIgnore(any(), any());
         assertThat(response.isLiked()).isFalse();
         assertThat(response.getLikeCount()).isEqualTo(8L);
+    }
+
+    @Test
+    @DisplayName("목록: 집 등록이 없으면 PLACE_NOT_REGISTERED")
+    void getPostsWithoutPlace() {
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> communityService.getPosts(1L, BoardFilter.RECOMMENDED, null, null, 0, 20))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(CommunityErrorCode.PLACE_NOT_REGISTERED);
+        verifyNoInteractions(postRepository);
+    }
+
+    @Test
+    @DisplayName("목록: 케이스가 없으면 키워드는 빈 값 하나, 태그는 정리해서 검색, size는 50으로 제한")
+    void getPostsFilters() {
+        UserPlace place = placeIn(building(10L));
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.of(place));
+        given(caseRepository.findActiveIssueCategoriesByUserId(1L)).willReturn(List.of());
+        given(postRepository.findIdsInBuilding(eq(10L), eq("FREE"), eq("leak"), eq("ceilingleak"), eq(false),
+                eq(List.of("")), eq(PageRequest.of(0, 50))))
+                .willReturn(new PageImpl<>(List.of(), PageRequest.of(0, 50), 0));
+
+        PostListResponse response = communityService.getPosts(1L, BoardFilter.FREE, "  leak ", "#Ceiling Leak", -1, 500);
+
+        assertThat(response.getContent()).isEmpty();
+        assertThat(response.getTagSummary().getTag()).isEqualTo("#ceilingleak");
+        assertThat(response.getTagSummary().getRelatedToMyCase()).isZero();
+        verify(postRepository, never()).countRelatedInBuildingByTag(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("목록: RECOMMENDED는 게시판 필터 없이 추천 정렬, 진행 중 케이스 카테고리의 태그를 키워드로 사용")
+    void getPostsRecommended() {
+        UserPlace place = placeIn(building(10L));
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.of(place));
+        given(caseRepository.findActiveIssueCategoriesByUserId(1L)).willReturn(List.of(IssueCategory.PESTS));
+        given(postRepository.findIdsInBuilding(eq(10L), eq(null), eq(null), eq(null), eq(true), any(), any()))
+                .willReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
+
+        PostListResponse response = communityService.getPosts(1L, BoardFilter.RECOMMENDED, " ", null, 0, 20);
+
+        assertThat(response.getTagSummary()).isNull();
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<String>> keywords = ArgumentCaptor.forClass(List.class);
+        verify(postRepository).findIdsInBuilding(any(), any(), any(), any(), anyBoolean(), keywords.capture(), any());
+        assertThat(keywords.getValue()).contains("roaches", "pests");
     }
 
     @Test
