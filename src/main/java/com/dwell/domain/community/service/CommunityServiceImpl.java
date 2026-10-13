@@ -1,13 +1,18 @@
 package com.dwell.domain.community.service;
 
 import com.dwell.domain.building.entity.UserPlace;
+import com.dwell.domain.building.enums.InsightStatus;
 import com.dwell.domain.building.repository.UserPlaceRepository;
 import com.dwell.domain.cases.repository.CaseRepository;
 import com.dwell.domain.community.dto.request.PostCreateRequest;
 import com.dwell.domain.community.dto.request.PostLikeRequest;
+import com.dwell.domain.community.dto.request.LandlordPostSearchRequest;
 import com.dwell.domain.community.dto.request.PostUpdateRequest;
 import com.dwell.domain.community.dto.request.ReplyCreateRequest;
 import com.dwell.domain.community.dto.response.PostCreateResponse;
+import com.dwell.domain.community.dto.response.LandlordPostListResponse;
+import com.dwell.domain.community.dto.response.LandlordPostResponse;
+import com.dwell.domain.community.dto.response.LandlordPostSummaryResponse;
 import com.dwell.domain.community.dto.response.PostAuthorResponse;
 import com.dwell.domain.community.dto.response.PostDetailResponse;
 import com.dwell.domain.community.dto.response.PostImageResponse;
@@ -29,6 +34,8 @@ import com.dwell.domain.community.entity.Reply;
 import com.dwell.domain.community.entity.Tag;
 import com.dwell.domain.community.enums.Board;
 import com.dwell.domain.community.enums.BoardFilter;
+import com.dwell.domain.community.enums.LandlordTopic;
+import com.dwell.domain.community.enums.PostSort;
 import com.dwell.domain.community.exception.CommunityErrorCode;
 import com.dwell.domain.community.repository.PostImageRepository;
 import com.dwell.domain.community.repository.PostLikeRepository;
@@ -52,10 +59,16 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -70,6 +83,22 @@ public class CommunityServiceImpl implements CommunityService {
     private static final int PREVIEW_LENGTH = 100;
     private static final int MAX_PAGE_SIZE = 50;
     private static final int MAX_TAG_SUGGESTIONS = 10;
+    private static final int ISSUE_POST_LIMIT = 5;
+    private static final int LANDLORD_MIN_POSTS = 3; // Tenants 탭 요약을 보여주는 최소 글 수
+    private static final int LANDLORD_PREVIEW_POSTS = 3;
+
+    // 집주인 언급 판단 (PostgreSQL 정규식, \m = 단어 시작)
+    // TODO: 게시글 작성 시 AI 분류(Post.mentions_landlord, landlord_topic) 컬럼이 생기면 키워드 판단을 교체
+    private static final String LANDLORD_MENTION_PATTERN = "\\m(landlord|super|superintendent|management|mgmt|property manager|owner)\\M";
+
+    // 집주인 언급 글 분류 키워드 (위에서부터 먼저 맞는 분류)
+    private static final Pattern NO_REPLY_PATTERN = Pattern.compile(
+            "\\b(repl(y|ied|ies|ying)|answer(ed|ing)?|respon(d|ded|se|ding)|ignor\\w*|ghost\\w*)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern FIXED_PATTERN = Pattern.compile("\\b(fixed|repaired|resolved)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern FAST_PATTERN = Pattern.compile(
+            "\\b(fast|quick(ly)?|promptly|right away|same day|next day)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SLOW_PATTERN = Pattern.compile(
+            "\\b(weeks?|months?|slow\\w*|still|again|keeps?|took|waiting|delay\\w*)\\b", Pattern.CASE_INSENSITIVE);
 
     // 케이스 이슈 카테고리 -> 관련 태그 (추천 글·"related to your case" 판단용, 태그는 소문자·# 없이 저장됨)
     private static final Map<IssueCategory, List<String>> ISSUE_TAG_KEYWORDS = Map.of(
@@ -326,6 +355,96 @@ public class CommunityServiceImpl implements CommunityService {
                 .build();
     }
 
+    // 이슈 관련 글 서비스
+    @Override
+    public List<PostSummaryResponse> getIssuePosts(Long buildingId, IssueCategory category) {
+
+        // 이슈 카테고리 관련 태그가 달린 글 (좋아요 많은 순)
+        List<String> keywords = ISSUE_TAG_KEYWORDS.getOrDefault(category, List.of());
+        if (keywords.isEmpty()) {
+            return List.of();
+        }
+        return toSummaries(postRepository.findRelatedIdsInBuilding(buildingId, keywords, ISSUE_POST_LIMIT));
+    }
+
+    // 집주인 언급 글 요약 서비스
+    @Override
+    public LandlordPostSummaryResponse getLandlordPostSummary(Long userId) {
+
+        log.info("[CommunityService] 집주인 언급 글 요약 서비스 - 시작: userId={}", userId);
+
+        // 내 건물 집주인 언급 글
+        UserPlace place = findPlaceForBoard(userId);
+        List<Post> posts = postRepository.findMentionsInBuilding(place.getBuilding().getId(), LANDLORD_MENTION_PATTERN);
+
+        // 3개 미만이면 요약 없이 글 수만
+        if (posts.size() < LANDLORD_MIN_POSTS) {
+            log.info("[CommunityService] 집주인 언급 글 요약 서비스 - 데이터 부족: userId={}, posts={}", userId, posts.size());
+            return LandlordPostSummaryResponse.builder()
+                    .status(InsightStatus.NOT_ENOUGH_DATA)
+                    .postCount(posts.size())
+                    .minimumRequired(LANDLORD_MIN_POSTS)
+                    .build();
+        }
+
+        // 분류별 수 + 좋아요 많은 순 미리보기
+        Map<Long, LandlordTopic> topics = classifyLandlordTopics(posts);
+        List<LandlordPostResponse> preview = toLandlordPosts(posts.stream().map(Post::getId).toList(), topics).stream()
+                .sorted(Comparator.comparingLong(LandlordPostResponse::getLikeCount).reversed())
+                .limit(LANDLORD_PREVIEW_POSTS)
+                .toList();
+
+        log.info("[CommunityService] 집주인 언급 글 요약 서비스 - 완료: userId={}, posts={}", userId, posts.size());
+
+        return LandlordPostSummaryResponse.builder()
+                .status(InsightStatus.OK)
+                .postCount(posts.size())
+                .minimumRequired(LANDLORD_MIN_POSTS)
+                .topicCounts(countTopics(posts, topics, false))
+                .previewPosts(preview)
+                .build();
+    }
+
+    // 집주인 언급 글 목록 서비스
+    @Override
+    public LandlordPostListResponse getLandlordPosts(Long userId, LandlordPostSearchRequest request) {
+
+        log.info("[CommunityService] 집주인 언급 글 목록 서비스 - 시작: userId={}, topic={}, issueType={}, floorBand={}, posted={}",
+                userId, request.getTopic(), request.getIssueType(), request.getFloorBand(), request.getPosted());
+
+        // 내 건물 집주인 언급 글 + 분류
+        UserPlace place = findPlaceForBoard(userId);
+        List<Post> posts = postRepository.findMentionsInBuilding(place.getBuilding().getId(), LANDLORD_MENTION_PATTERN);
+        Map<Long, LandlordTopic> topics = classifyLandlordTopics(posts);
+
+        // 분류 외 필터 (검색어·이슈·층·기간) -> 칩 숫자 기준
+        List<Post> filtered = filterLandlordPosts(posts, request);
+
+        // 분류 필터 + 정렬 + 페이지
+        List<Post> matched = filtered.stream()
+                .filter(post -> request.getTopic() == null || request.getTopic().isEmpty()
+                        || (topics.containsKey(post.getId()) && request.getTopic().contains(topics.get(post.getId()))))
+                .sorted(request.getSort() == PostSort.OLDEST
+                        ? Comparator.comparing(Post::getCreatedAt).thenComparing(Post::getId)
+                        : Comparator.comparing(Post::getCreatedAt).thenComparing(Post::getId).reversed())
+                .toList();
+        int size = Math.clamp(request.getSize(), 1, MAX_PAGE_SIZE);
+        int page = Math.max(request.getPage(), 0);
+        List<Long> pageIds = matched.stream().skip((long) page * size).limit(size).map(Post::getId).toList();
+
+        log.info("[CommunityService] 집주인 언급 글 목록 서비스 - 완료: userId={}, mentions={}, matched={}", userId, posts.size(), matched.size());
+
+        return LandlordPostListResponse.builder()
+                .address(place.getBuilding().getStreet())
+                .topicCounts(countTopics(filtered, topics, true))
+                .content(toLandlordPosts(pageIds, topics))
+                .page(page)
+                .size(size)
+                .totalElements(matched.size())
+                .hasNext((long) (page + 1) * size < matched.size())
+                .build();
+    }
+
     // 게시물 상세 서비스
     @Override
     public PostDetailResponse getPost(Long postId, Long userId) {
@@ -451,6 +570,92 @@ public class CommunityServiceImpl implements CommunityService {
             throw new CustomException(CommunityErrorCode.NOT_POST_AUTHOR);
         }
         return post;
+    }
+
+    // 내 집 조회 (게시판은 건물 단위라 주소 등록 필수)
+    private UserPlace findPlaceForBoard(Long userId) {
+        return userPlaceRepository.findByUserId(userId)
+                .orElseThrow(() -> {
+                    log.warn("[CommunityService] 등록된 집이 없습니다: userId={}", userId);
+                    return new CustomException(CommunityErrorCode.PLACE_NOT_REGISTERED);
+                });
+    }
+
+    // 집주인 언급 글 분류 (키워드: 무응답 -> 빨리 고침 -> 느린 수리 순으로 먼저 맞는 것, 없으면 분류 없음)
+    private Map<Long, LandlordTopic> classifyLandlordTopics(List<Post> posts) {
+        Map<Long, LandlordTopic> topics = new HashMap<>();
+        for (Post post : posts) {
+            String text = post.getTitle() + " " + post.getContent();
+            LandlordTopic topic = NO_REPLY_PATTERN.matcher(text).find() ? LandlordTopic.NO_REPLY
+                    : FIXED_PATTERN.matcher(text).find() && FAST_PATTERN.matcher(text).find() ? LandlordTopic.FIXED_WELL
+                    : SLOW_PATTERN.matcher(text).find() ? LandlordTopic.SLOW_REPAIRS
+                    : null;
+            if (topic != null) {
+                topics.put(post.getId(), topic);
+            }
+        }
+        return topics;
+    }
+
+    // 분류별 글 수 (withAll이면 ALL 포함, 칩 순서대로)
+    private Map<String, Long> countTopics(List<Post> posts, Map<Long, LandlordTopic> topics, boolean withAll) {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        if (withAll) {
+            counts.put("ALL", (long) posts.size());
+        }
+        for (LandlordTopic topic : LandlordTopic.values()) {
+            counts.put(topic.name(), posts.stream().filter(post -> topic == topics.get(post.getId())).count());
+        }
+        return counts;
+    }
+
+    // 집주인 언급 글 필터 (검색어·이슈 태그·층·기간, 분류 필터는 제외)
+    private List<Post> filterLandlordPosts(List<Post> posts, LandlordPostSearchRequest request) {
+        String q = request.getQ() == null || request.getQ().isBlank() ? null : request.getQ().strip().toLowerCase();
+        LocalDateTime postedAfter = request.getPosted() == null ? null : switch (request.getPosted()) {
+            case LAST_MONTH -> LocalDateTime.now().minusMonths(1);
+            case LAST_6_MONTHS -> LocalDateTime.now().minusMonths(6);
+            case LAST_YEAR -> LocalDateTime.now().minusYears(1);
+        };
+
+        // 이슈 필터: 선택한 카테고리의 관련 태그가 달린 글
+        Set<Long> issuePostIds = null;
+        if (request.getIssueType() != null && !request.getIssueType().isEmpty() && !posts.isEmpty()) {
+            Set<String> keywords = request.getIssueType().stream()
+                    .flatMap(category -> ISSUE_TAG_KEYWORDS.getOrDefault(category, List.of()).stream())
+                    .collect(Collectors.toSet());
+            issuePostIds = postTagRepository.findTagNamesByPostIds(posts.stream().map(Post::getId).toList()).stream()
+                    .filter(row -> keywords.contains((String) row[1]))
+                    .map(row -> (Long) row[0])
+                    .collect(Collectors.toSet());
+        }
+
+        Set<Long> issueFilter = issuePostIds;
+        return posts.stream()
+                .filter(post -> q == null || (post.getTitle() + " " + post.getContent()).toLowerCase().contains(q))
+                .filter(post -> issueFilter == null || issueFilter.contains(post.getId()))
+                .filter(post -> request.getFloorBand() == null || request.getFloorBand().isEmpty()
+                        || request.getFloorBand().contains(post.getFloorBand()))
+                .filter(post -> postedAfter == null || !post.getCreatedAt().isBefore(postedAfter))
+                .toList();
+    }
+
+    // 게시물 ID -> 집주인 언급 글 카드 (목록 카드 + 분류)
+    private List<LandlordPostResponse> toLandlordPosts(List<Long> postIds, Map<Long, LandlordTopic> topics) {
+        return toSummaries(postIds).stream()
+                .map(summary -> LandlordPostResponse.builder()
+                        .postId(summary.getPostId())
+                        .board(summary.getBoard())
+                        .floorBand(summary.getFloorBand())
+                        .title(summary.getTitle())
+                        .preview(summary.getPreview())
+                        .landlordTopic(topics.get(summary.getPostId()))
+                        .tags(summary.getTags())
+                        .likeCount(summary.getLikeCount())
+                        .replyCount(summary.getReplyCount())
+                        .createdAt(summary.getCreatedAt())
+                        .build())
+                .toList();
     }
 
     // 게시물 ID -> 목록 카드 (태그·썸네일·좋아요 수·댓글 수는 한 번에 모아서 조회, ID 순서 유지)

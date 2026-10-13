@@ -14,6 +14,14 @@ import com.dwell.domain.community.enums.Board;
 import com.dwell.domain.community.enums.BoardFilter;
 import com.dwell.domain.community.dto.response.PostListResponse;
 import com.dwell.domain.community.dto.response.TagSuggestionResponse;
+import com.dwell.domain.community.dto.request.LandlordPostSearchRequest;
+import com.dwell.domain.community.dto.response.LandlordPostListResponse;
+import com.dwell.domain.community.dto.response.LandlordPostResponse;
+import com.dwell.domain.community.dto.response.LandlordPostSummaryResponse;
+import com.dwell.domain.community.enums.LandlordTopic;
+import com.dwell.domain.building.enums.InsightStatus;
+import org.mockito.quality.Strictness;
+import java.time.LocalDateTime;
 import com.dwell.global.common.enums.IssueCategory;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -51,6 +59,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.anyString;
 
 @ExtendWith(MockitoExtension.class)
 class CommunityServiceImplTest {
@@ -298,6 +307,79 @@ class CommunityServiceImplTest {
 
         assertThat(response.isExactMatch()).isFalse();
         assertThat(response.getTitles()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("집주인 언급 글 요약: 3개 미만이면 NOT_ENOUGH_DATA, 분류·미리보기 없음")
+    void landlordSummaryNotEnough() {
+        UserPlace place = placeIn(building(10L));
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.of(place));
+        Post post = landlordPost(1L, "Landlord took 3 weeks", "slow", 1);
+        given(postRepository.findMentionsInBuilding(eq(10L), anyString())).willReturn(List.of(post));
+
+        LandlordPostSummaryResponse response = communityService.getLandlordPostSummary(1L);
+
+        assertThat(response.getStatus()).isEqualTo(InsightStatus.NOT_ENOUGH_DATA);
+        assertThat(response.getPostCount()).isEqualTo(1);
+        assertThat(response.getTopicCounts()).isNull();
+        assertThat(response.getPreviewPosts()).isNull();
+    }
+
+    @Test
+    @DisplayName("집주인 언급 글 목록: 키워드로 분류 (무응답 -> 빨리 고침 -> 느린 수리), 분류 필터는 칩 숫자에 영향 없음")
+    void landlordPostsClassification() {
+        Building b = building(10L);
+        given(b.getStreet()).willReturn("312 E 21st St");
+        UserPlace place = placeIn(b);
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.of(place));
+        Post noReply = landlordPost(1L, "How I got my landlord to reply in 2 days", "Sent a notice.", 3);
+        Post fixed = landlordPost(2L, "Mgmt fixed the heat fast this time", "Called Monday.", 2);
+        Post slow = landlordPost(3L, "Landlord took 3 weeks to send a plumber", "Asked twice.", 1);
+        Post none = landlordPost(4L, "The super is nice", "Nice guy.", 0);
+        given(postRepository.findMentionsInBuilding(eq(10L), anyString())).willReturn(List.of(noReply, fixed, slow, none));
+        given(postRepository.findAllById(List.of(2L))).willReturn(List.of(fixed));
+        given(postTagRepository.findTagNamesByPostIds(List.of(2L))).willReturn(List.of());
+        given(postImageRepository.findThumbnailKeysByPostIds(List.of(2L))).willReturn(List.of());
+        given(postLikeRepository.countByPostIds(List.of(2L))).willReturn(List.of());
+        given(replyRepository.countByPostIds(List.of(2L))).willReturn(List.of());
+        LandlordPostSearchRequest request = new LandlordPostSearchRequest();
+        request.setTopic(List.of(LandlordTopic.FIXED_WELL));
+
+        LandlordPostListResponse response = communityService.getLandlordPosts(1L, request);
+
+        assertThat(response.getAddress()).isEqualTo("312 E 21st St");
+        assertThat(response.getTopicCounts()).containsEntry("ALL", 4L).containsEntry("NO_REPLY", 1L)
+                .containsEntry("FIXED_WELL", 1L).containsEntry("SLOW_REPAIRS", 1L);
+        assertThat(response.getContent()).singleElement().satisfies(p -> {
+            assertThat(p.getPostId()).isEqualTo(2L);
+            assertThat(p.getLandlordTopic()).isEqualTo(LandlordTopic.FIXED_WELL);
+        });
+        assertThat(response.getTotalElements()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("이슈 관련 글: 카테고리 관련 태그로 조회 (HEAT -> noheat, radiator 등)")
+    void issuePosts() {
+        given(postRepository.findRelatedIdsInBuilding(eq(10L), any(), eq(5))).willReturn(List.of());
+
+        assertThat(communityService.getIssuePosts(10L, IssueCategory.HEAT_HOT_WATER)).isEmpty();
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<String>> keywords = ArgumentCaptor.forClass(List.class);
+        verify(postRepository).findRelatedIdsInBuilding(eq(10L), keywords.capture(), eq(5));
+        assertThat(keywords.getValue()).contains("noheat", "radiator");
+    }
+
+    // 분류·필터 테스트용 게시물 (쓰이지 않는 getter가 있어서 lenient)
+    private Post landlordPost(Long id, String title, String content, int daysAgo) {
+        Post post = mock(Post.class, withSettings().strictness(Strictness.LENIENT));
+        given(post.getId()).willReturn(id);
+        given(post.getTitle()).willReturn(title);
+        given(post.getContent()).willReturn(content);
+        given(post.getBoard()).willReturn(Board.FREE);
+        given(post.getFloorBand()).willReturn(FloorBand.MIDDLE);
+        given(post.getCreatedAt()).willReturn(LocalDateTime.now().minusDays(daysAgo));
+        return post;
     }
 
     @Test
