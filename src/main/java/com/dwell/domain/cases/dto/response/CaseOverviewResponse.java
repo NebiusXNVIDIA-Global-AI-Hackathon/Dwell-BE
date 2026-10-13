@@ -39,11 +39,20 @@ public class CaseOverviewResponse {
     @Schema(description = "이슈 상세", example = "WATER_LEAK")
     private String issueDetail;
 
+    @Schema(description = "이슈 상세 직접 입력값 (issueDetail이 OTHER일 때 사용자가 입력한 값, 아니면 null)", example = "Strange smell from the drain", nullable = true)
+    private String issueDetailOther;
+
     @Schema(description = "위치", example = "BATHROOM")
     private Location location;
 
-    @Schema(description = "부위", example = "CEILING")
+    @Schema(description = "위치 직접 입력값 (location이 OTHER일 때 사용자가 입력한 값, 아니면 null)", example = "Basement storage room", nullable = true)
+    private String locationOther;
+
+    @Schema(description = "부위 (위치가 Entire Unit이면 null)", example = "CEILING", nullable = true)
     private AffectedArea affectedArea;
+
+    @Schema(description = "부위 직접 입력값 (affectedArea가 OTHER일 때 사용자가 입력한 값, 아니면 null)", example = "Behind the mirror", nullable = true)
+    private String affectedAreaOther;
 
     @Schema(description = "심각도", example = "HIGH")
     private Severity severity;
