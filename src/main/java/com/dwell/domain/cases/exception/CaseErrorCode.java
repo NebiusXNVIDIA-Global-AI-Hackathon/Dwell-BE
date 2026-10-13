@@ -17,7 +17,8 @@ public enum CaseErrorCode implements BaseErrorCode {
     INVALID_OCCURRED_AT("C006", "occurredAt must be a valid ISO-8601 time, not in the future, and not earlier than the last case event.", HttpStatus.BAD_REQUEST),
     INVALID_AFFECTED_AREA("C007", "The affected area is not available for the selected location.", HttpStatus.BAD_REQUEST),
     OTHER_TEXT_REQUIRED("C008", "Please enter a value when Other is selected.", HttpStatus.BAD_REQUEST),
-    EVIDENCE_REQUIRED("C009", "At least one evidence file is required.", HttpStatus.BAD_REQUEST);
+    EVIDENCE_REQUIRED("C009", "At least one evidence file is required.", HttpStatus.BAD_REQUEST),
+    INVALID_ISSUE_DETAIL("C010", "The specific issue is not available for the selected issue category.", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

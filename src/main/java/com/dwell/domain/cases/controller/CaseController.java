@@ -4,6 +4,7 @@ import com.dwell.domain.cases.dto.request.CaseCreateRequest;
 import com.dwell.domain.cases.dto.request.CaseEventCreateRequest;
 import com.dwell.domain.cases.dto.request.CaseEvidenceAddRequest;
 import com.dwell.domain.cases.dto.response.CaseCreateResponse;
+import com.dwell.domain.cases.dto.response.CaseOptionsResponse;
 import com.dwell.domain.cases.dto.response.CaseOverviewResponse;
 import com.dwell.domain.cases.dto.response.CaseTimelineResponse;
 import com.dwell.domain.cases.service.CaseEventService;
@@ -33,6 +34,18 @@ public class CaseController {
 
     private final CaseService caseService;
     private final CaseEventService caseEventService;
+
+    // 케이스 입력 옵션
+    @Operation(summary = "케이스 입력 옵션 API", description = "New Case 선택지(이슈 카테고리·세부 이슈·공간·부위), 안전 경고 문구, 증거 촬영 가이드를 조회하는 API")
+    @GetMapping("/options")
+    public ResponseEntity<BaseResponse<CaseOptionsResponse>> getCaseOptions() {
+
+        // service 호출
+        CaseOptionsResponse response = caseService.getCaseOptions();
+
+        // 응답 반환
+        return ResponseEntity.status(HttpStatus.OK).body(BaseResponse.success(200, "Case options retrieved successfully.", response));
+    }
 
     @Operation(summary = "케이스 상세 조회 API", description = "케이스 ID 기반으로, 헤더·Current Status 배너·진행 스텝·체크리스트·증거 요약을 조회하는 API")
     @GetMapping("/{caseId}")
