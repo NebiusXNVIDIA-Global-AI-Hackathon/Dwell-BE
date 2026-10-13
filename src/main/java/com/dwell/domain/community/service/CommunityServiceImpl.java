@@ -16,6 +16,7 @@ import com.dwell.domain.community.repository.TagRepository;
 import com.dwell.domain.file.entity.File;
 import com.dwell.domain.file.enums.FilePurpose;
 import com.dwell.domain.file.repository.FileRepository;
+import com.dwell.domain.file.service.FileService;
 import com.dwell.global.common.enums.FloorBand;
 import com.dwell.global.exception.CustomException;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +46,7 @@ public class CommunityServiceImpl implements CommunityService {
     private final PostImageRepository postImageRepository;
     private final UserPlaceRepository userPlaceRepository;
     private final FileRepository fileRepository;
+    private final FileService fileService;
 
     // 게시물 작성 서비스
     @Override
@@ -95,6 +97,38 @@ public class CommunityServiceImpl implements CommunityService {
         return PostCreateResponse.builder()
                 .postId(post.getId())
                 .build();
+    }
+
+    // 게시물 삭제 서비스
+    @Override
+    @Transactional
+    public void deletePost(Long postId, Long userId) {
+
+        log.info("[CommunityService] 게시물 삭제 서비스 - 시작: postId={}, userId={}", postId, userId);
+
+        // 게시물 조회
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> {
+                    log.warn("[CommunityService] 게시물 삭제 서비스 - 존재하지 않는 게시물: postId={}", postId);
+                    return new CustomException(CommunityErrorCode.POST_NOT_FOUND);
+                });
+
+        // 내 게시물이 아니면 X (탈퇴한 작성자의 글은 user가 NULL)
+        if (post.getUser() == null || !post.getUser().getId().equals(userId)) {
+            log.warn("[CommunityService] 게시물 삭제 서비스 - 타인 게시물 삭제 시도: postId={}, userId={}", postId, userId);
+            throw new CustomException(CommunityErrorCode.NOT_POST_AUTHOR);
+        }
+
+        // 첨부 이미지 파일 조회 (파일은 DB에서 자동으로 지워지지 않음)
+        List<File> files = postImageRepository.findFilesByPost(post);
+
+        // 게시물 삭제 (댓글·이미지 연결·태그 연결·좋아요는 DB의 ON DELETE CASCADE로 함께 삭제)
+        postRepository.delete(post);
+
+        // 파일 삭제 (post_image가 file을 참조하므로 게시물 삭제 뒤에, S3 원본은 커밋 뒤에)
+        fileService.deleteFiles(files);
+
+        log.info("[CommunityService] 게시물 삭제 서비스 - 완료: postId={}, files={}", postId, files.size());
     }
 
 

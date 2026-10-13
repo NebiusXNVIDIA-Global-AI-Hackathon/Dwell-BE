@@ -15,4 +15,15 @@ public interface CommunityService {
      * @return PostCreateResponse(postId)
      */
     PostCreateResponse createPost(Long userId, PostCreateRequest request);
+
+    /**
+     * [게시물 삭제 서비스]
+     * @author 김민호
+     * @description: 내 게시물을 영구 삭제합니다. 댓글·태그 연결·좋아요는 DB에서 함께 지워지고,
+     *               첨부 이미지 파일(DB·S3)도 삭제합니다.
+     *
+     * @request postId, userId
+     * @return void
+     */
+    void deletePost(Long postId, Long userId);
 }
