@@ -32,7 +32,7 @@ public class CaseChecklistItem extends BaseTimeEntity {
     @Column(nullable = false)
     private boolean checked;
 
-    // AI items cannot be edited
+    // AI items can also be edited (translation is cleared)
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)
     private ChecklistSource source;
@@ -47,5 +47,18 @@ public class CaseChecklistItem extends BaseTimeEntity {
         this.textNative = textNative;
         this.source = source;
         this.sortOrder = sortOrder;
+    }
+
+    // 체크 여부 변경
+    public void changeChecked(boolean checked) {
+        this.checked = checked;
+    }
+
+    // 문구 변경 (실제로 바뀌면 번역본은 더 이상 맞지 않으므로 비움, source는 유지)
+    public void changeText(String text) {
+        if (!this.text.equals(text)) {
+            this.text = text;
+            this.textNative = null;
+        }
     }
 }
