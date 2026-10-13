@@ -35,6 +35,23 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     Page<Long> findIdsInBuilding(Long buildingId, String board, String q, String tag,
                                  boolean recommended, Collection<String> keywords, Pageable pageable);
 
+    // 이슈 관련 글 (내 건물, 관련 태그가 달린 글, 좋아요 많은 순 -> 최신 순, Issue Details용)
+    @Query(value = "select p.id from post p "
+            + "where p.building_id = :buildingId "
+            + "and exists (select 1 from post_tag pt join tag t on t.id = pt.tag_id where pt.post_id = p.id and t.name in (:keywords)) "
+            + "order by (select count(*) from post_like pl where pl.post_id = p.id) desc, p.created_at desc, p.id desc "
+            + "limit :limit",
+            nativeQuery = true)
+    List<Long> findRelatedIdsInBuilding(Long buildingId, Collection<String> keywords, int limit);
+
+    // 집주인을 언급한 글 (내 건물, 제목·내용에 landlord / super / management 등, 최신 순)
+    // pattern은 PostgreSQL 정규식 (~*: 대소문자 무시)
+    @Query(value = "select p.* from post p "
+            + "where p.building_id = :buildingId and (p.title ~* :pattern or p.content ~* :pattern) "
+            + "order by p.created_at desc, p.id desc",
+            nativeQuery = true)
+    List<Post> findMentionsInBuilding(Long buildingId, String pattern);
+
     // 검색창 제목 추천 (내 건물, 제목에 포함, 최신 순 5개)
     List<Post> findTop5ByBuildingIdAndTitleContainingIgnoreCaseOrderByCreatedAtDescIdDesc(Long buildingId, String title);
 

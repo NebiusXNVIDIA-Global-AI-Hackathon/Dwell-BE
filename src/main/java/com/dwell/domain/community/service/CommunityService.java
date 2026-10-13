@@ -1,17 +1,24 @@
 package com.dwell.domain.community.service;
 
+import com.dwell.domain.community.dto.request.LandlordPostSearchRequest;
 import com.dwell.domain.community.dto.request.PostCreateRequest;
 import com.dwell.domain.community.dto.request.PostLikeRequest;
 import com.dwell.domain.community.dto.request.PostUpdateRequest;
 import com.dwell.domain.community.dto.request.ReplyCreateRequest;
+import com.dwell.domain.community.dto.response.LandlordPostListResponse;
+import com.dwell.domain.community.dto.response.LandlordPostSummaryResponse;
 import com.dwell.domain.community.dto.response.PostCreateResponse;
 import com.dwell.domain.community.dto.response.PostDetailResponse;
-import com.dwell.domain.community.dto.response.PostListResponse;
-import com.dwell.domain.community.dto.response.TagSuggestionResponse;
-import com.dwell.domain.community.enums.BoardFilter;
 import com.dwell.domain.community.dto.response.PostLikeResponse;
+import com.dwell.domain.community.dto.response.PostListResponse;
+import com.dwell.domain.community.dto.response.PostSummaryResponse;
 import com.dwell.domain.community.dto.response.PostUpdateResponse;
 import com.dwell.domain.community.dto.response.ReplyCreateResponse;
+import com.dwell.domain.community.dto.response.TagSuggestionResponse;
+import com.dwell.domain.community.enums.BoardFilter;
+import com.dwell.global.common.enums.IssueCategory;
+
+import java.util.List;
 
 public interface CommunityService {
 
@@ -71,6 +78,38 @@ public interface CommunityService {
      * @return TagSuggestionResponse(items, exactMatch, titles)
      */
     TagSuggestionResponse suggestTags(Long userId, String q, boolean withTitles);
+
+    /**
+     * [이슈 관련 글 서비스]
+     * @author 김민호
+     * @description: 건물 게시물 중 이슈 카테고리 관련 태그가 달린 글을 좋아요 많은 순으로 5개 줍니다 (My Place Issue Details용).
+     *
+     * @request buildingId, category
+     * @return List<PostSummaryResponse>
+     */
+    List<PostSummaryResponse> getIssuePosts(Long buildingId, IssueCategory category);
+
+    /**
+     * [집주인 언급 글 요약 서비스]
+     * @author 김민호
+     * @description: 내 건물 게시물 중 집주인을 언급한 글 수, 분류별 수, 미리보기 3개를 줍니다 (Building Insights · Tenants 탭).
+     *               집주인 언급·분류는 아직 제목·내용 키워드로 판단합니다. 3개 미만이면 NOT_ENOUGH_DATA입니다.
+     *
+     * @request userId
+     * @return LandlordPostSummaryResponse(status, postCount, minimumRequired, topicCounts, previewPosts)
+     */
+    LandlordPostSummaryResponse getLandlordPostSummary(Long userId);
+
+    /**
+     * [집주인 언급 글 목록 서비스]
+     * @author 김민호
+     * @description: 내 건물 집주인 언급 글을 검색·필터(분류·이슈·층·기간)·정렬해서 페이지로 줍니다 (Posts about landlord).
+     *               칩 숫자(topicCounts)는 분류 외 필터를 적용한 기준입니다.
+     *
+     * @request userId, LandlordPostSearchRequest(q, topic, issueType, floorBand, posted, sort, page, size)
+     * @return LandlordPostListResponse(address, topicCounts, content, page, size, totalElements, hasNext)
+     */
+    LandlordPostListResponse getLandlordPosts(Long userId, LandlordPostSearchRequest request);
 
     /**
      * [게시물 상세 서비스]
