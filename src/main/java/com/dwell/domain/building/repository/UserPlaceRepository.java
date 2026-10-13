@@ -7,6 +7,6 @@ import java.util.Optional;
 
 public interface UserPlaceRepository extends JpaRepository<UserPlace, Long> {
 
-    // 사용자의 집 정보 조회 (케이스 생성 시 주소 스냅샷용)
+    // 사용자의 집 (사용자당 1개) — 케이스 생성 시 주소 스냅샷용으로도 사용
     Optional<UserPlace> findByUserId(Long userId);
 }
