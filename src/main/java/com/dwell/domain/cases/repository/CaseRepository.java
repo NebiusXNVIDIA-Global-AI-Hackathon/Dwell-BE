@@ -2,8 +2,10 @@ package com.dwell.domain.cases.repository;
 
 import com.dwell.domain.cases.entity.Case;
 import com.dwell.domain.cases.enums.CaseStage;
+import com.dwell.global.common.enums.IssueCategory;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 import java.util.Collection;
 import java.util.List;
@@ -20,4 +22,9 @@ public interface CaseRepository extends JpaRepository<Case, Long> {
 
     // 사용자의 가장 최근 케이스 (케이스 번호 생성용)
     Optional<Case> findTopByUserIdOrderByIdDesc(Long userId);
+
+    // 사용자의 진행 중(Resolved 아님) 케이스 이슈 카테고리 (커뮤니티 추천 글용)
+    @Query("select distinct c.issueCategory from Case c where c.user.id = :userId and c.deletedAt is null "
+            + "and c.stage <> com.dwell.domain.cases.enums.CaseStage.RESOLVED")
+    List<IssueCategory> findActiveIssueCategoriesByUserId(Long userId);
 }

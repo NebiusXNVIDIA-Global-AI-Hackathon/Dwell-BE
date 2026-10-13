@@ -6,6 +6,8 @@ import com.dwell.domain.community.dto.request.PostUpdateRequest;
 import com.dwell.domain.community.dto.request.ReplyCreateRequest;
 import com.dwell.domain.community.dto.response.PostCreateResponse;
 import com.dwell.domain.community.dto.response.PostDetailResponse;
+import com.dwell.domain.community.dto.response.PostListResponse;
+import com.dwell.domain.community.enums.BoardFilter;
 import com.dwell.domain.community.dto.response.PostLikeResponse;
 import com.dwell.domain.community.dto.response.PostUpdateResponse;
 import com.dwell.domain.community.dto.response.ReplyCreateResponse;
@@ -27,6 +29,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "Community", description = "건물 이웃 커뮤니티 API")
@@ -81,6 +84,26 @@ public class CommunityController {
 
         // 응답 변환
         return ResponseEntity.ok(BaseResponse.success(200, "Post updated.", response));
+    }
+
+    // 게시물 목록·검색 컨트롤러
+    @Operation(summary = "게시물 목록·검색",
+            description = "내 건물 게시물을 탭(RECOMMENDED / FREE / TIPS)·제목(q)·태그(tag, # 없이)로 조회합니다. "
+                    + "RECOMMENDED는 내 진행 중 케이스 관련 글 -> 좋아요 순, FREE·TIPS는 최신 순입니다. size는 최대 50입니다.")
+    @GetMapping("/posts")
+    public ResponseEntity<BaseResponse<PostListResponse>> getPosts(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @RequestParam(defaultValue = "RECOMMENDED") BoardFilter board,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String tag,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        // 게시물 목록 서비스 호출
+        PostListResponse response = communityService.getPosts(userDetails.getUser().getId(), board, q, tag, page, size);
+
+        // 응답 변환
+        return ResponseEntity.ok(BaseResponse.success(200, "Posts retrieved.", response));
     }
 
     // 게시물 상세 컨트롤러
