@@ -26,6 +26,7 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -121,6 +122,38 @@ class AuthServiceTest {
                 .extracting("errorCode").isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN);
         assertThat(expired.getRevokedAt()).isNull();
         verify(refreshTokenRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("로그아웃: Refresh Token 폐기")
+    void logout() {
+        RefreshToken token = refreshTokenOf(LocalDateTime.now().plusDays(1));
+        given(refreshTokenRepository.findByTokenHash(anyString())).willReturn(Optional.of(token));
+
+        authService.logout(refreshRequest("refresh-token"));
+
+        assertThat(token.getRevokedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("로그아웃: 없는 토큰이어도 에러 없이 끝")
+    void logoutNotFound() {
+        given(refreshTokenRepository.findByTokenHash(anyString())).willReturn(Optional.empty());
+
+        assertThatCode(() -> authService.logout(refreshRequest("unknown"))).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("로그아웃: 이미 폐기된 토큰이면 폐기 시각을 바꾸지 않음")
+    void logoutAlreadyRevoked() {
+        RefreshToken token = refreshTokenOf(LocalDateTime.now().plusDays(1));
+        token.revoke();
+        LocalDateTime revokedAt = token.getRevokedAt();
+        given(refreshTokenRepository.findByTokenHash(anyString())).willReturn(Optional.of(token));
+
+        authService.logout(refreshRequest("refresh-token"));
+
+        assertThat(token.getRevokedAt()).isEqualTo(revokedAt);
     }
 
     // ========== 픽스처 ==========

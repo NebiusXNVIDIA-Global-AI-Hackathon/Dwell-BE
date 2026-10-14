@@ -62,4 +62,17 @@ public class AuthController {
         // 응답 반환
         return ResponseEntity.status(HttpStatus.OK).body(BaseResponse.success(200, "Token refreshed.", response));
     }
+
+    // 로그아웃
+    @Operation(summary = "로그아웃", description = "리프레시 토큰을 폐기해서 더 이상 재발급할 수 없게 하는 API (지금 기기만 로그아웃). 없거나 이미 폐기된 토큰이어도 204. 액세스 토큰은 클라이언트에서 삭제")
+    @PostMapping("/auth/logout")
+    public ResponseEntity<Void> logout(
+            @Valid @RequestBody RefreshTokenRequest request) {
+
+        // service 호출
+        authService.logout(request);
+
+        // 응답 반환
+        return ResponseEntity.noContent().build();
+    }
 }
