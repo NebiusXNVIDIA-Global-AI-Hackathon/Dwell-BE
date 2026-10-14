@@ -37,4 +37,9 @@ public class RefreshToken extends BaseCreatedTimeEntity {
         this.tokenHash = tokenHash;
         this.expiresAt = expiresAt;
     }
+
+    // 토큰 폐기 (재발급·로그아웃 시)
+    public void revoke() {
+        this.revokedAt = LocalDateTime.now();
+    }
 }

@@ -10,6 +10,8 @@ import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 
@@ -18,18 +20,25 @@ public class JwtProvider {
 
     private static final String TOKEN_TYPE = "ACCESS_TOKEN";
 
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
     private final SecretKey secretKey;
     private final long accessTokenExpiration;
+    private final long refreshTokenExpiration;
 
     public JwtProvider(
             @Value("${jwt.secret}") String secret,
-            @Value("${jwt.access-token-expiration}") long accessTokenExpiration) {
+            @Value("${jwt.access-token-expiration}") long accessTokenExpiration,
+            @Value("${jwt.refresh-token-expiration}") long refreshTokenExpiration) {
 
         // Build the SecretKey used to sign JWTs
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
 
         // Access token expiration time
         this.accessTokenExpiration = accessTokenExpiration;
+
+        // Refresh Token 만료 시간
+        this.refreshTokenExpiration = refreshTokenExpiration;
     }
 
 
@@ -53,6 +62,18 @@ public class JwtProvider {
                 .expiration(expiredAt) // Expiration
                 .signWith(secretKey) // Signature
                 .compact();
+    }
+
+    // Refresh Token 생성 (JWT가 아닌 랜덤 문자열, 서버 DB와 비교만 하므로 내용이 필요 없음)
+    public String createRefreshToken() {
+        byte[] bytes = new byte[32];
+        SECURE_RANDOM.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    // Refresh Token 만료 시간 (ms)
+    public long getRefreshTokenExpiration() {
+        return refreshTokenExpiration;
     }
 
     public boolean validateToken(String token) {
