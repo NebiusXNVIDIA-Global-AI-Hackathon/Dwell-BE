@@ -12,6 +12,9 @@ public class LoginResponse {
     @Schema(description = "액세스 토큰", example = "eyJhbGciOiJIUzI1NiJ9...")
     private String accessToken;
 
+    @Schema(description = "리프레시 토큰 (14일, 액세스 토큰이 만료되면 POST /auth/refresh로 재발급)", example = "Xk3p9Qm2...")
+    private String refreshToken;
+
     @Schema(description = "로그인한 사용자 정보")
     private UserInfo user;
 

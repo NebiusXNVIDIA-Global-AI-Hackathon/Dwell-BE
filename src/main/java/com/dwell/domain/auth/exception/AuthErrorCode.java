@@ -10,7 +10,8 @@ import org.springframework.http.HttpStatus;
 public enum AuthErrorCode implements BaseErrorCode {
 
     INVALID_CREDENTIALS("A001", "The email or password you entered is incorrect.", HttpStatus.UNAUTHORIZED),
-    DEMO_ACCOUNT_NOT_FOUND("A002", "Demo account not found.", HttpStatus.NOT_FOUND);
+    DEMO_ACCOUNT_NOT_FOUND("A002", "Demo account not found.", HttpStatus.NOT_FOUND),
+    INVALID_REFRESH_TOKEN("A003", "The refresh token is invalid or expired. Please log in again.", HttpStatus.UNAUTHORIZED);
 
     private final String code;
     private final String message;
