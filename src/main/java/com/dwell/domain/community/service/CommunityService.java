@@ -7,6 +7,8 @@ import com.dwell.domain.community.dto.request.PostUpdateRequest;
 import com.dwell.domain.community.dto.request.ReplyCreateRequest;
 import com.dwell.domain.community.dto.response.LandlordPostListResponse;
 import com.dwell.domain.community.dto.response.LandlordPostSummaryResponse;
+import com.dwell.domain.community.dto.response.MyPostListResponse;
+import com.dwell.domain.community.dto.response.MyReplyListResponse;
 import com.dwell.domain.community.dto.response.PostCreateResponse;
 import com.dwell.domain.community.dto.response.PostDetailResponse;
 import com.dwell.domain.community.dto.response.PostLikeResponse;
@@ -66,6 +68,27 @@ public interface CommunityService {
      * @return PostListResponse(tagSummary, content, page, size, totalElements, hasNext)
      */
     PostListResponse getPosts(Long userId, BoardFilter board, String q, String tag, int page, int size);
+
+    /**
+     * [내 게시물 목록 서비스]
+     * @author 김정모
+     * @description: My Activities Posts 탭. 지금 내 건물에 쓴 게시물을 최신 순으로 줍니다 (주소를 바꾸면 이전 건물 글은 제외).
+     *               탭 숫자(내 게시물 수, 내 댓글 수)를 함께 줍니다.
+     *
+     * @request userId, page, size
+     * @return MyPostListResponse(counts, content, page, size, totalElements, hasNext)
+     */
+    MyPostListResponse getMyPosts(Long userId, int page, int size);
+
+    /**
+     * [내 댓글 목록 서비스]
+     * @author 김정모
+     * @description: My Activities Replies 탭. 지금 내 건물 게시물에 단 댓글을 최신 순으로, 게시물 제목과 함께 줍니다.
+     *
+     * @request userId, page, size
+     * @return MyReplyListResponse(content, page, size, totalElements, hasNext)
+     */
+    MyReplyListResponse getMyReplies(Long userId, int page, int size);
 
     /**
      * [태그 자동완성 서비스]

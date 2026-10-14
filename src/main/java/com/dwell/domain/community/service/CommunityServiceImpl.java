@@ -16,6 +16,10 @@ import com.dwell.domain.community.dto.response.LandlordPostSummaryResponse;
 import com.dwell.domain.community.dto.response.PostAuthorResponse;
 import com.dwell.domain.community.dto.response.PostDetailResponse;
 import com.dwell.domain.community.dto.response.PostImageResponse;
+import com.dwell.domain.community.dto.response.MyPostListResponse;
+import com.dwell.domain.community.dto.response.MyPostResponse;
+import com.dwell.domain.community.dto.response.MyReplyListResponse;
+import com.dwell.domain.community.dto.response.MyReplyResponse;
 import com.dwell.domain.community.dto.response.PostListResponse;
 import com.dwell.domain.community.dto.response.PostSummaryResponse;
 import com.dwell.domain.community.dto.response.PostLikeResponse;
@@ -300,6 +304,96 @@ public class CommunityServiceImpl implements CommunityService {
                 .size(ids.getSize())
                 .totalElements(ids.getTotalElements())
                 .hasNext(ids.hasNext())
+                .build();
+    }
+
+    // 내 게시물 목록 조회
+    @Override
+    public MyPostListResponse getMyPosts(Long userId, int page, int size) {
+
+        // 내 집 조회 (게시판은 건물 단위라 지금 내 건물 글만)
+        UserPlace place = userPlaceRepository.findByUserId(userId)
+                .orElseThrow(() -> {
+                    log.warn("[CommunityService] My posts failed: place not registered: userId={}", userId);
+                    return new CustomException(CommunityErrorCode.PLACE_NOT_REGISTERED);
+                });
+        Long buildingId = place.getBuilding().getId();
+
+        // 내 게시물 페이지 조회 (최신 순)
+        PageRequest pageRequest = PageRequest.of(Math.max(page, 0), Math.clamp(size, 1, MAX_PAGE_SIZE));
+        Page<Post> posts = postRepository.findByUserIdAndBuildingIdOrderByCreatedAtDescIdDesc(userId, buildingId, pageRequest);
+
+        // 탭 숫자 (게시물 수는 페이지 전체 개수 그대로, 댓글 수만 따로 조회)
+        long replyCount = replyRepository.countByUserIdAndPostBuildingId(userId, buildingId);
+
+        // DTO 변환 (태그·좋아요 수·댓글 수는 커뮤니티 카드 로직으로 모은 뒤, 와프 Posts 탭에 필요한 필드만)
+        List<Long> postIds = posts.getContent().stream().map(Post::getId).toList();
+        List<MyPostResponse> content = toSummaries(postIds).stream()
+                .map(summary -> MyPostResponse.builder()
+                        .postId(summary.getPostId())
+                        .title(summary.getTitle())
+                        .board(summary.getBoard())
+                        .tags(summary.getTags())
+                        .likeCount(summary.getLikeCount())
+                        .replyCount(summary.getReplyCount())
+                        .createdAt(summary.getCreatedAt())
+                        .build())
+                .toList();
+
+        // 로그 출력
+        log.info("[CommunityService] My posts retrieved: userId={}, posts={}, replies={}", userId, posts.getTotalElements(), replyCount);
+
+        // 응답 세팅
+        return MyPostListResponse.builder()
+                .counts(MyPostListResponse.Counts.builder()
+                        .posts(posts.getTotalElements())
+                        .replies(replyCount)
+                        .build())
+                .content(content)
+                .page(posts.getNumber())
+                .size(posts.getSize())
+                .totalElements(posts.getTotalElements())
+                .hasNext(posts.hasNext())
+                .build();
+    }
+
+    // 내 댓글 목록 조회
+    @Override
+    public MyReplyListResponse getMyReplies(Long userId, int page, int size) {
+
+        // 내 집 조회 (게시판은 건물 단위라 지금 내 건물 글에 단 댓글만)
+        UserPlace place = userPlaceRepository.findByUserId(userId)
+                .orElseThrow(() -> {
+                    log.warn("[CommunityService] My replies failed: place not registered: userId={}", userId);
+                    return new CustomException(CommunityErrorCode.PLACE_NOT_REGISTERED);
+                });
+
+        // 내 댓글 페이지 조회 (최신 순, 게시물 함께 조회)
+        PageRequest pageRequest = PageRequest.of(Math.max(page, 0), Math.clamp(size, 1, MAX_PAGE_SIZE));
+        Page<Reply> replies = replyRepository.findByUserIdAndPostBuildingIdOrderByCreatedAtDescIdDesc(
+                userId, place.getBuilding().getId(), pageRequest);
+
+        // DTO 변환
+        List<MyReplyResponse> content = replies.getContent().stream()
+                .map(reply -> MyReplyResponse.builder()
+                        .replyId(reply.getId())
+                        .postId(reply.getPost().getId())
+                        .postTitle(reply.getPost().getTitle())
+                        .content(reply.getContent())
+                        .createdAt(reply.getCreatedAt())
+                        .build())
+                .toList();
+
+        // 로그 출력
+        log.info("[CommunityService] My replies retrieved: userId={}, total={}", userId, replies.getTotalElements());
+
+        // 응답 세팅
+        return MyReplyListResponse.builder()
+                .content(content)
+                .page(replies.getNumber())
+                .size(replies.getSize())
+                .totalElements(replies.getTotalElements())
+                .hasNext(replies.hasNext())
                 .build();
     }
 

@@ -1,5 +1,8 @@
 package com.dwell.domain.user.controller;
 
+import com.dwell.domain.community.dto.response.MyPostListResponse;
+import com.dwell.domain.community.dto.response.MyReplyListResponse;
+import com.dwell.domain.community.service.CommunityService;
 import com.dwell.domain.user.dto.request.UserProfileUpdateRequest;
 import com.dwell.domain.user.dto.request.UserSignUpRequest;
 import com.dwell.domain.user.dto.response.UserProfileResponse;
@@ -23,6 +26,7 @@ import org.springframework.web.bind.annotation.*;
 public class UserController {
 
     private final UserService userService;
+    private final CommunityService communityService;
 
     // 회원가입
     @Operation(summary = "Sign up", description = "Registers a user with account info and home address.")
@@ -88,6 +92,36 @@ public class UserController {
 
         // 응답 반환
         return ResponseEntity.status(HttpStatus.OK).body(BaseResponse.success(200, "Profile updated successfully.", response));
+    }
+
+    // 내 게시물 목록
+    @Operation(summary = "내 게시물 목록 API", description = "My Activities Posts 탭. 지금 내 건물에 쓴 게시물을 최신 순으로 조회하고, 탭 숫자(게시물 수, 댓글 수)를 함께 주는 API. 수정·삭제는 커뮤니티 API 사용")
+    @GetMapping("/users/me/posts")
+    public ResponseEntity<BaseResponse<MyPostListResponse>> getMyPosts(
+            @AuthenticationPrincipal CustomUserDetails customUserDetails,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        // service 호출
+        MyPostListResponse response = communityService.getMyPosts(customUserDetails.getUser().getId(), page, size);
+
+        // 응답 반환
+        return ResponseEntity.status(HttpStatus.OK).body(BaseResponse.success(200, "My posts retrieved successfully.", response));
+    }
+
+    // 내 댓글 목록
+    @Operation(summary = "내 댓글 목록 API", description = "My Activities Replies 탭. 지금 내 건물 게시물에 단 댓글을 최신 순으로, 게시물 제목과 함께 조회하는 API")
+    @GetMapping("/users/me/replies")
+    public ResponseEntity<BaseResponse<MyReplyListResponse>> getMyReplies(
+            @AuthenticationPrincipal CustomUserDetails customUserDetails,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        // service 호출
+        MyReplyListResponse response = communityService.getMyReplies(customUserDetails.getUser().getId(), page, size);
+
+        // 응답 반환
+        return ResponseEntity.status(HttpStatus.OK).body(BaseResponse.success(200, "My replies retrieved successfully.", response));
     }
 
     // 회원 탈퇴
