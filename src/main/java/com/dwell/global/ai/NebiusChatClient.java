@@ -64,6 +64,24 @@ public class NebiusChatClient {
 
     // 스트리밍 호출: 최종 답변 조각(delta)을 받는 대로 onDelta로 넘김 (호출한 스레드에서 끝날 때까지 블로킹)
     public void stream(List<LlmMessage> messages, Consumer<String> onDelta) {
+        stream(messages, model, onDelta);
+    }
+
+    // 한 번에 받는 호출 (스트리밍 결과를 모아서 반환)
+    public String complete(List<LlmMessage> messages) {
+        return complete(messages, model);
+    }
+
+    // 모델을 지정한 한 번에 받는 호출 (e.g. 판정용 상위 모델)
+    public String complete(List<LlmMessage> messages, String model) {
+        StringBuilder answer = new StringBuilder();
+        stream(messages, model, answer::append);
+        return answer.toString().strip();
+    }
+
+    // ========== 헬퍼 함수 ==========
+
+    private void stream(List<LlmMessage> messages, String model, Consumer<String> onDelta) {
         if (!isConfigured()) {
             throw new LlmException("NEBIUS_API_KEY is not set.");
         }
@@ -73,7 +91,7 @@ public class NebiusChatClient {
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
                 .header("Accept", "text/event-stream")
-                .POST(HttpRequest.BodyPublishers.ofString(toRequestBody(messages)))
+                .POST(HttpRequest.BodyPublishers.ofString(toRequestBody(messages, model)))
                 .build();
 
         ThinkFilter thinkFilter = new ThinkFilter(onDelta);
@@ -96,16 +114,7 @@ public class NebiusChatClient {
         }
     }
 
-    // 한 번에 받는 호출 (스트리밍 결과를 모아서 반환)
-    public String complete(List<LlmMessage> messages) {
-        StringBuilder answer = new StringBuilder();
-        stream(messages, answer::append);
-        return answer.toString().strip();
-    }
-
-    // ========== 헬퍼 함수 ==========
-
-    private String toRequestBody(List<LlmMessage> messages) {
+    private String toRequestBody(List<LlmMessage> messages, String model) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
         body.put("messages", messages.stream().map(m -> Map.of("role", m.role(), "content", m.content())).toList());

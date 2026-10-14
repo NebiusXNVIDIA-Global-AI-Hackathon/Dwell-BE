@@ -129,4 +129,21 @@ public class Evidence extends BaseCreatedTimeEntity {
         this.descriptionLanguage = descriptionLanguage;
         this.analysisStatus = analysisStatus;
     }
+
+    // AI 분석 결과 반영 (Inconclusive면 severity = null)
+    public void applyAnalysis(IssueType issueType, Severity severity, List<LocalizedText> reasons, String subLocation,
+                              Progression progression, LocalizedText progressionReason) {
+        this.issueType = issueType;
+        this.severity = severity;
+        this.reasons = reasons;
+        this.subLocation = subLocation;
+        this.progression = progression;
+        this.progressionReason = progressionReason;
+        this.analyzedAt = LocalDateTime.now();
+        this.analysisStatus = AnalysisStatus.DONE;
+    }
+
+    public void markAnalysisFailed() {
+        this.analysisStatus = AnalysisStatus.FAILED;
+    }
 }

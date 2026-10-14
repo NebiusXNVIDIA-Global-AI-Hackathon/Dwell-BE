@@ -8,11 +8,13 @@ import com.dwell.domain.cases.dto.request.ChecklistItemUpdateRequest;
 import com.dwell.domain.cases.dto.response.CaseCreateResponse;
 import com.dwell.domain.cases.dto.response.CaseOptionsResponse;
 import com.dwell.domain.cases.dto.response.CaseOverviewResponse;
+import com.dwell.domain.cases.dto.response.CaseSummaryResponse;
 import com.dwell.domain.cases.dto.response.CaseTimelineResponse;
 import com.dwell.domain.cases.dto.response.ChecklistItemResponse;
 import com.dwell.domain.cases.service.CaseChecklistService;
 import com.dwell.domain.cases.service.CaseEventService;
 import com.dwell.domain.cases.service.CaseService;
+import com.dwell.domain.cases.service.CaseSummaryService;
 import com.dwell.global.common.BaseResponse;
 import com.dwell.global.security.CustomUserDetails;
 import io.swagger.v3.oas.annotations.Operation;
@@ -40,6 +42,7 @@ public class CaseController {
     private final CaseService caseService;
     private final CaseEventService caseEventService;
     private final CaseChecklistService caseChecklistService;
+    private final CaseSummaryService caseSummaryService;
 
     // 케이스 입력 옵션
     @Operation(summary = "케이스 입력 옵션 API", description = "New Case 선택지(이슈 카테고리·세부 이슈·공간·부위), 안전 경고 문구, 증거 촬영 가이드를 조회하는 API")
@@ -77,6 +80,19 @@ public class CaseController {
         return ResponseEntity
                 .status(HttpStatus.OK)
                 .body(BaseResponse.success(200, "Case timeline retrieved successfully.", response));
+    }
+
+    @Operation(summary = "케이스 분석 조회 API", description = "케이스 ID 기반으로, 진행 판단·Issue Details·심각도 근거(Why it's high severity)·건물 패턴·타임라인 미리보기·Your Rights(Legal RAG)·증거 썸네일을 조회하는 API. 분석 중이면 analysisStatus = PENDING")
+    @GetMapping("/{caseId}/summary")
+    public ResponseEntity<BaseResponse<CaseSummaryResponse>> getCaseSummary(
+            @AuthenticationPrincipal CustomUserDetails customUserDetails,
+            @PathVariable Long caseId
+    ) {
+        CaseSummaryResponse response = caseSummaryService.getCaseSummary(caseId, customUserDetails.getUser().getId());
+
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(BaseResponse.success(200, "Case analysis retrieved successfully.", response));
     }
 
     @Operation(summary = "케이스 상태 업데이트 API", description = "케이스에 이벤트(답장·일정·311 신고 등)를 기록하고 stage를 전이한 뒤, 갱신된 케이스 상세를 반환하는 API")

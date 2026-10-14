@@ -1,5 +1,6 @@
 package com.dwell.domain.cases.service;
 
+import com.dwell.domain.analysis.event.CaseAnalysisRequestedEvent;
 import com.dwell.domain.building.entity.Building;
 import com.dwell.domain.building.entity.UserPlace;
 import com.dwell.domain.building.repository.UserPlaceRepository;
@@ -39,6 +40,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.springframework.context.ApplicationEventPublisher;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -73,6 +75,8 @@ class CaseServiceTest {
     private UserPlaceRepository userPlaceRepository;
     @Mock
     private FileService fileService;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     private CaseService caseService;
 
@@ -80,7 +84,7 @@ class CaseServiceTest {
     void setUp() {
         caseService = new CaseService(caseRepository, caseChecklistItemRepository, caseEventRepository, noticeRepository,
                 evidenceRepository, fileRepository, new CaseBannerFactory(), new CaseTimelineStepFactory(), new CaseTimelineEventFactory(),
-                userRepository, userPlaceRepository, fileService);
+                userRepository, userPlaceRepository, fileService, eventPublisher);
     }
 
     @Test
@@ -237,6 +241,9 @@ class CaseServiceTest {
         verify(caseEventRepository).save(eventCaptor.capture());
         assertThat(eventCaptor.getValue().getType()).isEqualTo(CaseEventType.CASE_CREATED);
         assertThat(eventCaptor.getValue().getCaseEntity()).isEqualTo(savedCase);
+
+        // AI 심각도 분석 요청 (커밋 후 비동기)
+        verify(eventPublisher).publishEvent(new CaseAnalysisRequestedEvent(savedCase.getId()));
     }
 
     @Test
@@ -529,8 +536,9 @@ class CaseServiceTest {
         assertThat(eventCaptor.getValue().getRefType()).isEqualTo(CaseEventRefType.EVIDENCE);
         assertThat(eventCaptor.getValue().getRefId()).isEqualTo(10L);
 
-        // 재분석 대기
+        // 재분석 대기 + 분석 요청
         assertThat(caseEntity.getAnalysisStatus()).isEqualTo(AnalysisStatus.PENDING);
+        verify(eventPublisher).publishEvent(new CaseAnalysisRequestedEvent(caseEntity.getId()));
     }
 
     @Test
