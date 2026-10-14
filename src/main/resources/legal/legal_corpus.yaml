@@ -1,0 +1,643 @@
+# Dwell Legal RAG corpus (F2)
+# 범위: NYC / 누수·곰팡이·난방(온수 포함) / 보복 금지 / 신고 경로 / 수리 완료 인증(F4)
+# 수집일: 2026-10-11
+#
+# text_type
+#   verbatim : 공식 원문 그대로 (HMC는 nyc.gov PDF, 2026-04-18 생성본에서 추출)
+#   summary  : 원문 요약 (nysenate.gov / HPD 페이지). 인용 시 url의 원문을 보여줄 것
+#
+# issue_types: leak | mold | heat | hot_water | all
+# used_by    : notice(F3 Notice) | analysis(케이스 분석·Your Rights) | assistant(F2 채팅)
+#              | verify(F4 수리 검증) | escalation(F3 Escalated·신고 준비) | building(F5·F6)
+#
+# 서비스 원칙: 응답 표현은 "관련 규정상 집주인 의무에 해당할 가능성"까지만. 법률 자문 아님.
+
+sources:
+  HMC_PDF: https://www.nyc.gov/assets/buildings/pdf/HousingMaintenanceCode.pdf
+  HMC_WEB: https://codelibrary.amlegal.com/codes/newyorkcity/latest/NYCadmin/0-0-0-210587
+  NYS_LAWS: https://www.nysenate.gov/legislation/laws
+
+chunks:
+
+# ─────────────────────────────────────────────
+# 1. NYC Housing Maintenance Code — 집주인 기본 의무
+# ─────────────────────────────────────────────
+- id: NYC-HMC-27-2005
+  source: NYC Housing Maintenance Code
+  citation: "NYC Admin. Code § 27-2005"
+  title: Duties of owner
+  url: https://www.nyc.gov/assets/buildings/pdf/HousingMaintenanceCode.pdf#page=15
+  issue_types: [all]
+  used_by: [notice, analysis, assistant]
+  text_type: verbatim
+  text: |
+    a. The owner of a multiple dwelling shall keep the premises in good repair.
+    b. The owner of a multiple dwelling, in addition to the duty imposed upon such owner by
+    subdivision a of this section, shall be responsible for compliance with the requirements of
+    this code, except insofar as responsibility for compliance is imposed upon the tenant alone.
+    c. The owner of a one- or two-family dwelling shall keep the premises in good repair, and
+    shall be responsible for compliance with the provisions of this code, except to the extent
+    otherwise agreed between such owner and any tenant of such dwelling by lease or other
+    contract in writing, or except insofar as responsibility for compliance with this code is
+    imposed upon the tenant alone.
+    d. The owner of a dwelling shall not harass any tenants or persons lawfully entitled to
+    occupancy of such dwelling as set forth in paragraph 48 of subdivision a of section 27-2004.
+  summary: >
+    The owner must keep the building and apartments in good repair and is responsible for
+    complying with the Housing Maintenance Code, except where the tenant alone is responsible.
+    The owner must not harass tenants.
+
+- id: NYC-HMC-27-2005-E
+  source: NYC Housing Maintenance Code
+  citation: "NYC Admin. Code § 27-2005(e)(1)"
+  title: Notice before interrupting heat, hot water, water, gas or electricity
+  url: https://www.nyc.gov/assets/buildings/pdf/HousingMaintenanceCode.pdf#page=15
+  issue_types: [heat, hot_water, leak]
+  used_by: [assistant, analysis]
+  text_type: verbatim
+  text: |
+    The owner of a multiple dwelling shall provide lawful occupants of such multiple dwelling
+    with notice prior to making repairs, or performing other work, that will cause an
+    interruption of any heat, hot water, cold water, gas or electricity service expected to last
+    for two or more hours. ... the notice shall be publicly posted in a prominent place within
+    the multiple dwelling at least twenty-four hours before the interruption of such service is
+    expected to commence and shall remain posted until such interruption ends. ... Such notice
+    shall be posted in English, Spanish and such other languages as the department may
+    provide by rule.
+  summary: >
+    Planned shutoffs of heat/hot water/water/gas/electricity lasting 2+ hours need a posted
+    notice at least 24 hours in advance (emergencies excepted), in English and Spanish.
+
+- id: NYC-HMC-27-2006
+  source: NYC Housing Maintenance Code
+  citation: "NYC Admin. Code § 27-2006"
+  title: Duties of tenant
+  url: https://www.nyc.gov/assets/buildings/pdf/HousingMaintenanceCode.pdf#page=16
+  issue_types: [all]
+  used_by: [assistant, analysis]
+  text_type: verbatim
+  text: |
+    a. A tenant shall ... be responsible for violations of this code to the extent that he or
+    she has the power to prevent the occurrence of a violation. A tenant has the power to
+    prevent the occurrence of a violation if:
+    (1) It is caused by his or her own wilful act or that of a member of his or her family or
+    household, or a guest; or
+    (2) It is the result of such tenant's gross negligence, neglect or abuse, or the gross
+    negligence, neglect or abuse of a member of his or her family, or household or a guest.
+    c. The fact that a tenant is or may be liable for a violation of this code or any other law or
+    is found liable for civil or criminal penalties does not relieve the owner of his or her
+    obligation to keep the premises, and every part thereof, in good repair.
+  summary: >
+    A tenant is responsible only for conditions caused by their own willful act or gross
+    negligence (or household/guests). Even then, the owner still must keep the premises in
+    good repair. Useful when a landlord replies "you caused it".
+
+- id: NYC-HMC-27-2008
+  source: NYC Housing Maintenance Code
+  citation: "NYC Admin. Code § 27-2008"
+  title: Owner's right of access
+  url: https://www.nyc.gov/assets/buildings/pdf/HousingMaintenanceCode.pdf#page=17
+  issue_types: [all]
+  used_by: [assistant, verify]
+  text_type: verbatim
+  text: |
+    No tenant shall refuse to permit the owner, or his or her agent or employee, to enter such
+    tenant's dwelling unit or other space under his or her control to make repairs or
+    improvements required by this code or other law or to inspect such apartment or other
+    space to determine compliance with this code or any other provision of law, if the right of
+    entry is exercised at a reasonable time and in a reasonable manner.
+  summary: >
+    The tenant must allow access for required repairs or inspections at a reasonable time and
+    in a reasonable manner. Relevant when scheduling repair visits.
+
+- id: NYC-HMC-27-2004-A48
+  source: NYC Housing Maintenance Code
+  citation: "NYC Admin. Code § 27-2004(a)(48)"
+  title: Definition of harassment (selected)
+  url: https://www.nyc.gov/assets/buildings/pdf/HousingMaintenanceCode.pdf#page=10
+  issue_types: [all]
+  used_by: [assistant, escalation, building]
+  text_type: verbatim
+  text: |
+    48. ... the term "harassment" shall mean any act or omission by or on behalf of an owner
+    that (i) causes or is intended to cause any person lawfully entitled to occupancy of a
+    dwelling unit to vacate such dwelling unit or to surrender or waive any rights in relation to
+    such occupancy, and (ii) includes one or more of the following acts or omissions ...:
+    b. repeated interruptions or discontinuances of essential services, or an interruption or
+    discontinuance of an essential service for an extended duration or of such significance as
+    to substantially impair the habitability of such dwelling unit;
+    b-2. repeated failures to correct hazardous or immediately hazardous violations of this
+    code ... relating to the dwelling unit or the common areas of the building containing such
+    dwelling unit, within the time required for such corrections;
+    b-3. repeated false certifications that a violation of this code or the New York city
+    construction codes, relating to the building containing such dwelling unit, has been
+    corrected;
+  summary: >
+    Owner harassment can include repeated or prolonged loss of essential services (like heat),
+    repeatedly failing to correct hazardous violations on time, and repeatedly filing false
+    certifications that violations were corrected. Ties repeated "fixed but not fixed" patterns
+    (F4) and building history (F5/F6) to a recognized legal concept.
+
+# ─────────────────────────────────────────────
+# 2. 누수 (leak)
+# ─────────────────────────────────────────────
+- id: NYC-HMC-27-2026
+  source: NYC Housing Maintenance Code
+  citation: "NYC Admin. Code § 27-2026"
+  title: Maintenance of sewer connections and plumbing fixtures
+  url: https://www.nyc.gov/assets/buildings/pdf/HousingMaintenanceCode.pdf#page=41
+  issue_types: [leak]
+  used_by: [notice, analysis, assistant]
+  text_type: verbatim
+  text: |
+    The owner of a dwelling shall properly maintain and keep in good repair the plumbing and
+    drainage system, including water closets, toilets, sinks and other fixtures.
+  summary: The owner must maintain and repair plumbing, drainage, toilets, sinks and fixtures.
+
+- id: NYC-HMC-27-2027-B
+  source: NYC Housing Maintenance Code
+  citation: "NYC Admin. Code § 27-2027(b)"
+  title: Drainage of roofs (dampness in walls and ceilings)
+  url: https://www.nyc.gov/assets/buildings/pdf/HousingMaintenanceCode.pdf#page=41
+  issue_types: [leak]
+  used_by: [notice, analysis]
+  text_type: verbatim
+  text: |
+    b. The owner of a dwelling shall provide and maintain drainage from all roofs to carry off
+    storm water, to prevent it from dripping to the ground, or from causing dampness in walls,
+    ceilings, and open spaces.
+  summary: >
+    The owner must maintain roof drainage so storm water does not cause dampness in walls and
+    ceilings. Relevant to ceiling leaks on top floors or after rain.
+
+# ─────────────────────────────────────────────
+# 3. 곰팡이 (mold) — Local Law 55 of 2018
+# ─────────────────────────────────────────────
+- id: NYC-HMC-27-2017-DEF
+  source: NYC Housing Maintenance Code
+  citation: "NYC Admin. Code § 27-2017"
+  title: Definitions — indoor mold hazard, underlying defect, visible mold
+  url: https://www.nyc.gov/assets/buildings/pdf/HousingMaintenanceCode.pdf#page=25
+  issue_types: [mold, leak]
+  used_by: [notice, analysis, verify]
+  text_type: verbatim
+  text: |
+    Indoor mold hazard. The term "indoor mold hazard" means any condition of mold growth on an
+    indoor surface, building structure or ventilation system, including mold that is within wall
+    cavities, that is likely to cause harm to a person or that has been cited as a violation by
+    the department.
+    Underlying defect. The term "underlying defect" means a condition that causes an indoor
+    mold hazard, such as a water leak or water infiltration from plumbing or defective masonry
+    pointing or other moisture condition, or causes an infestation of pests, including holes or
+    entryway paths for pests.
+    Visible mold. The term "visible mold" means mold that is readily identifiable by visual
+    inspection, including mold that is behind furniture or other interior obstructions.
+  summary: >
+    A water leak that causes mold is an "underlying defect". Mold inside wall cavities also
+    counts as an indoor mold hazard.
+
+- id: NYC-HMC-27-2017.1
+  source: NYC Housing Maintenance Code
+  citation: "NYC Admin. Code § 27-2017.1"
+  title: Owners' responsibility to remediate (incl. underlying defect)
+  url: https://www.nyc.gov/assets/buildings/pdf/HousingMaintenanceCode.pdf#page=26
+  issue_types: [mold, leak]
+  used_by: [notice, analysis, verify]
+  text_type: verbatim
+  text: |
+    The existence of an indoor allergen hazard in any dwelling unit in a multiple dwelling is
+    hereby declared to constitute a condition dangerous to health. An owner of a dwelling shall
+    keep the premises free from pests and other indoor allergen hazards and from any condition
+    conducive to indoor allergen hazards, and shall prevent the reasonably foreseeable
+    occurrence of such a conditions and shall expeditiously remediate such conditions and any
+    underlying defect, when such underlying defect exists, consistent with section 27-2017.8
+    and the rules promulgated pursuant to section 27-2017.9.
+  summary: >
+    Mold is declared a condition dangerous to health. The owner must remediate it promptly AND
+    fix the underlying defect (e.g., the leak). Core basis for F4 "Surface-only": painting over
+    a stain without fixing the leak does not address the underlying defect.
+
+- id: NYC-HMC-27-2017.2
+  source: NYC Housing Maintenance Code
+  citation: "NYC Admin. Code § 27-2017.2"
+  title: Owners' responsibility to investigate (on complaint)
+  url: https://www.nyc.gov/assets/buildings/pdf/HousingMaintenanceCode.pdf#page=26
+  issue_types: [mold, leak]
+  used_by: [notice, analysis]
+  text_type: verbatim
+  text: |
+    a. The owner of a multiple dwelling shall cause an investigation to be made for indoor
+    allergen hazards in all occupied dwelling units and in common areas ...
+    b. Investigations shall be undertaken at least once a year and more often if necessary,
+    such as when, in the exercise of reasonable care, an owner knows or should have known of
+    a condition that is reasonably foreseeable to cause an indoor allergen hazard, or an
+    occupant makes a complaint concerning a condition that is likely to cause an indoor
+    allergen hazard or requests an inspection, or the department issues a notice of violation
+    or orders the correction of a violation that is likely to cause an indoor allergen hazard.
+  summary: >
+    The owner must investigate at least yearly, and also when a tenant complains about a
+    condition likely to cause mold (such as a leak) or requests an inspection.
+
+- id: NYC-HMC-27-2017.3
+  source: NYC Housing Maintenance Code
+  citation: "NYC Admin. Code § 27-2017.3"
+  title: Violation for visible mold (classes by area)
+  url: https://www.nyc.gov/assets/buildings/pdf/HousingMaintenanceCode.pdf#page=26
+  issue_types: [mold]
+  used_by: [analysis, assistant, escalation]
+  text_type: verbatim
+  text: |
+    a. The presence of visible mold in any room in a dwelling unit in a multiple dwelling shall
+    constitute an indoor mold hazard violation as provided in this section, except when such
+    mold is present on tile or grout:
+    1. ... less than ten square feet in a room within a dwelling unit shall constitute a
+    non-hazardous violation.
+    2. ... between ten square feet and thirty square feet in a room within a dwelling unit
+    shall constitute a hazardous violation.
+    4. ... greater than or equal to thirty square feet in a room within a dwelling unit, shall
+    constitute an immediately hazardous violation.
+    c. 2. The date for correction of an immediately hazardous violation pursuant to subdivision
+    a of this section shall be twenty-one days after service of the notice of violation.
+  key_facts:
+    class_A_non_hazardous: "< 10 sq ft per room"
+    class_B_hazardous: "10–30 sq ft per room"
+    class_C_immediately_hazardous: ">= 30 sq ft per room (correct within 21 days)"
+    excluded: "mold on tile or grout"
+    upgrade: "uncorrected or falsely certified violations can be upgraded A→B, B→C"
+  summary: >
+    Visible mold in an apartment is a violation (except on tile/grout). Under 10 sq ft = Class A,
+    10–30 sq ft = Class B, 30+ sq ft = Class C (21 days to correct). Uncorrected or falsely
+    certified mold violations can be upgraded.
+  notes: >
+    앱은 면적을 측정하지 않음(F1은 수치 예측 안 함). 등급 판정 대신 "HPD 점검 시 면적 기준으로
+    등급이 정해진다"는 설명용으로만 사용.
+
+# ─────────────────────────────────────────────
+# 4. 난방·온수 (heat / hot water)
+# ─────────────────────────────────────────────
+- id: NYC-HMC-27-2028
+  source: NYC Housing Maintenance Code
+  citation: "NYC Admin. Code § 27-2028"
+  title: Central heat required
+  url: https://www.nyc.gov/assets/buildings/pdf/HousingMaintenanceCode.pdf#page=42
+  issue_types: [heat]
+  used_by: [notice, analysis]
+  text_type: verbatim
+  text: |
+    Except as otherwise provided in this article, every multiple dwelling and every tenant-
+    occupied one or two-family dwelling shall be provided with heat from a central heating
+    system constructed in accordance with the provisions of the building code and the
+    regulations of the department.
+  summary: Multiple dwellings and tenant-occupied 1–2 family homes must be provided with heat.
+
+- id: NYC-HMC-27-2029
+  source: NYC Housing Maintenance Code
+  citation: "NYC Admin. Code § 27-2029"
+  title: Minimum temperature to be maintained
+  url: https://www.nyc.gov/assets/buildings/pdf/HousingMaintenanceCode.pdf#page=42
+  issue_types: [heat]
+  used_by: [notice, analysis, assistant, escalation]
+  text_type: verbatim
+  text: |
+    a. During the period from October first through May thirty-first, centrally-supplied heat,
+    in any dwelling in which such heat is required to be provided, shall be furnished so as to
+    maintain, in every portion of such dwelling used or occupied for living purposes:
+    (1) between the hours of six a.m. and ten p.m., a temperature of at least sixty-eight
+    degrees Fahrenheit whenever the outside temperature falls below fifty-five degrees; and
+    (2) between the hours of ten p.m. and six a.m., a temperature of at least sixty-two
+    degrees Fahrenheit.
+  key_facts:
+    heat_season: "Oct 1 – May 31"
+    day: "6am–10pm: >= 68°F indoors when outside < 55°F"
+    night: "10pm–6am: >= 62°F indoors (regardless of outside temperature)"
+  summary: >
+    Heat season is Oct 1–May 31. Daytime (6am–10pm) indoor temperature must be at least 68°F when
+    it is below 55°F outside; overnight (10pm–6am) at least 62°F.
+
+- id: NYC-HMC-27-2031
+  source: NYC Housing Maintenance Code
+  citation: "NYC Admin. Code § 27-2031"
+  title: Supply of hot water
+  url: https://www.nyc.gov/assets/buildings/pdf/HousingMaintenanceCode.pdf#page=48
+  issue_types: [hot_water]
+  used_by: [notice, analysis, assistant]
+  text_type: verbatim
+  text: |
+    Except as otherwise provided in this article, every bath, shower, washbasin and sink in any
+    dwelling unit in a multiple dwelling or tenant-occupied one-family or two-family dwelling
+    shall be supplied at all times between the hours of six a.m. and midnight with hot water at
+    a constant minimum temperature of one hundred twenty degrees Fahrenheit from a central
+    source of supply ..., provided however that baths and showers equipped with
+    balanced-pressure mixing valves, thermostatic mixing valves or combination pressure
+    balancing/thermostatic valves may produce a discharge temperature less than one hundred
+    twenty degrees Fahrenheit but in no event less than one hundred ten degrees Fahrenheit.
+  key_facts:
+    min_temp: "120°F (110°F allowed at showers/baths with mixing valves)"
+    hours_per_code_text: "6am–midnight"
+    hours_per_hpd_page: "365 days per year (HPD guidance)"
+  summary: >
+    Hot water must be supplied at a constant minimum of 120°F (110°F at showers with mixing
+    valves). HPD guidance describes it as required 365 days per year.
+  notes: >
+    ⚠ 시간 표기 불일치: PDF 원문은 "6 a.m. ~ midnight", HPD 안내 페이지는 "365일 상시".
+    사용자 응답에는 시간대를 단정하지 말고 120°F 기준 + 원문 링크로 안내.
+
+# ─────────────────────────────────────────────
+# 5. 위반 등급·시정 기한·수리 완료 인증 (F3 SLA 근거 / F4 핵심)
+# ─────────────────────────────────────────────
+- id: NYC-HMC-27-2115-C
+  source: NYC Housing Maintenance Code
+  citation: "NYC Admin. Code § 27-2115(c)"
+  title: Correction dates for violations
+  url: https://www.nyc.gov/assets/buildings/pdf/HousingMaintenanceCode.pdf#page=161
+  issue_types: [all]
+  used_by: [analysis, assistant, escalation]
+  text_type: verbatim
+  text: |
+    (c) The said notice of violation shall also specify the date by which each violation shall
+    be corrected. Such date shall be:
+    (1) ninety days from the date of mailing of the notice in the case of non-hazardous
+    violations;
+    (2) thirty days from the date of mailing of the notice in the case of hazardous
+    violations; and
+    (3) twenty-four hours in the case of immediately hazardous violations ...
+  summary: >
+    After HPD issues a violation: non-hazardous (A) 90 days, hazardous (B) 30 days, immediately
+    hazardous (C) 24 hours to correct. Special Class C periods exist (see HPD-VIOLATION-CLASSES).
+  notes: >
+    이 기한은 HPD 위반 발부 "이후" 시정 기한이지 집주인 응답 기한이 아님.
+    앱의 SLA(24h/72h/7일)는 제품 정책값 — 혼동 금지 (PRD Decisions).
+
+- id: NYC-HMC-27-2115-F
+  source: NYC Housing Maintenance Code
+  citation: "NYC Admin. Code § 27-2115(f)"
+  title: Owner certification of correction (and when a violation is deemed corrected)
+  url: https://www.nyc.gov/assets/buildings/pdf/HousingMaintenanceCode.pdf#page=162
+  issue_types: [all]
+  used_by: [verify, escalation, assistant]
+  text_type: verbatim
+  text: |
+    (f) (1) ... Such certification shall be made in writing, under oath by the registered owner,
+    a registered officer or director of a corporate owner or by the registered managing agent
+    ... no later than fourteen days after the date set for correction in the case of
+    non-hazardous and hazardous violations, and no later than five days after the date set for
+    correction in the case of immediately hazardous violations, and shall include the date when
+    each violation was corrected. ...
+    (2) A copy of such certification shall then be mailed not more than twelve calendar days
+    from the date of receipt of notification to any complainant by the department.
+    (3) (i) Such violation shall be deemed corrected seventy days from the date of receipt of
+    such certification by the department unless the department has determined by a
+    reinspection made within such period that the violation still has not been corrected ...;
+    a copy of such notice shall be sent to the complainant.
+  key_facts:
+    certification: "owner certifies correction under oath (no inspection required)"
+    complainant_copy: "HPD mails a copy to the complainant within 12 days"
+    deemed_corrected: "70 days after HPD receives certification, unless reinspection finds it uncorrected"
+  summary: >
+    An owner can clear a violation by certifying under oath that it was corrected. The
+    complainant receives a copy. If HPD does not reinspect and find otherwise within 70 days,
+    the violation is deemed corrected — i.e., closed on paper without verification.
+  notes: >
+    ⭐ F4 근거: "종결 ≠ 해결". 인증만으로 서류상 종결될 수 있으므로 세입자 측 전후 증거가 중요.
+    → HPD-CERT-CHALLENGE(세입자 이의 제기)와 함께 제시.
+
+- id: HPD-VIOLATION-CLASSES
+  source: NYC HPD
+  citation: "HPD, Clear Violations"
+  title: Violation classes and correction periods
+  url: https://www.nyc.gov/site/hpd/services-and-information/clear-violations.page
+  issue_types: [all]
+  used_by: [analysis, assistant, escalation]
+  text_type: summary
+  text: |
+    Class A (non-hazardous): 90 days from date of service.
+    Class B (hazardous): 30 days from date of service.
+    Class C (immediately hazardous) — mold, mice/cockroaches, rats, lead-based paint, window
+    guards: 21 days. Self-closing doors: 14 days. Heat and hot water: no time (immediately).
+    All other Class C: 24 hours.
+  key_facts:
+    heat_hot_water: "Class C, correction immediately (no grace period)"
+    mold_class_C: "21 days"
+    other_class_C: "24 hours"
+  summary: >
+    Heat and hot water violations are Class C and must be corrected immediately. Class C mold has
+    21 days; other Class C conditions 24 hours; Class B 30 days; Class A 90 days.
+
+- id: HPD-CERT-CHALLENGE
+  source: NYC HPD
+  citation: "HPD, Clear Violations — certification of correction"
+  title: Tenants can challenge an owner's certification of correction
+  url: https://www.nyc.gov/site/hpd/services-and-information/clear-violations.page
+  issue_types: [all]
+  used_by: [verify, escalation, assistant]
+  text_type: summary
+  text: |
+    HPD notifies tenants when it receives an owner's certification of correction. Tenants may
+    challenge the certification, triggering an audit inspection (a reinspection by a Housing
+    Inspector). Owners must certify only after conditions are corrected properly; HPD may audit
+    any certification. A false certification subjects the owner to civil penalties and may
+    result in placement on the Certification Watchlist. Violations found uncorrected after
+    certification enter False Certification status and remain open.
+    Mold and pest violations cannot be certified through eCertification.
+  summary: >
+    If the landlord tells HPD it was fixed but it was not, the tenant can challenge the
+    certification and HPD will send an inspector. False certifications carry penalties.
+  notes: >
+    ⭐ F4 판정이 Surface-only / Not fixed / Inconclusive일 때의 "다음 대응" 근거.
+
+# ─────────────────────────────────────────────
+# 6. 뉴욕주 법 (summary — 원문은 url)
+# ─────────────────────────────────────────────
+- id: NYS-RPL-235-B
+  source: New York Real Property Law
+  citation: "N.Y. Real Prop. Law § 235-b"
+  title: Warranty of habitability
+  url: https://www.nysenate.gov/legislation/laws/RPP/235-B
+  issue_types: [all]
+  used_by: [notice, analysis, assistant]
+  text_type: summary
+  text: |
+    1. In every written or oral residential lease, the landlord is deemed to warrant that the
+    premises and all areas used in connection with them in common with other tenants are fit
+    for human habitation and for the uses reasonably intended by the parties, and that the
+    occupants shall not be subjected to any conditions which would be "dangerous, hazardous or
+    detrimental to their life, health or safety." Conditions caused by the misconduct of the
+    tenant or persons under the tenant's direction or control are not a breach.
+    2. Any agreement by a tenant waiving or modifying these rights is "void as contrary to public
+    policy."
+    3. In determining damages for breach, the court need not require expert testimony.
+  summary: >
+    Every residential lease (written or oral) includes a warranty that the apartment is fit to
+    live in and free of conditions dangerous to health or safety. Tenants cannot waive this.
+
+- id: NYS-RPL-223-B
+  source: New York Real Property Law
+  citation: "N.Y. Real Prop. Law § 223-b"
+  title: Retaliation by landlord against tenant
+  url: https://www.nysenate.gov/legislation/laws/RPP/223-B
+  issue_types: [all]
+  used_by: [notice, analysis, assistant]
+  text_type: summary
+  text: |
+    1. No landlord shall serve a notice to quit, commence an action to recover possession, or
+    substantially alter the terms of the tenancy in retaliation for:
+    (a) a good faith complaint, by or in behalf of the tenant, to a governmental authority or to
+    the landlord or the landlord's agent about alleged violations of health or safety laws,
+    habitability, or repair obligations;
+    (b) actions taken in good faith to secure or enforce rights under the lease or housing laws;
+    (c) the tenant's participation in a tenants' organization.
+    2. Substantially altering the terms of tenancy includes refusing to renew a lease or offering
+    a renewal with unreasonable terms such as an unreasonable rent increase.
+    3–4. A tenant may sue for damages and attorney's fees, and may raise retaliation as a
+    defense in an eviction case.
+    5. A rebuttable presumption of retaliation arises if the landlord takes such an action within
+    one year after the tenant's protected complaint or action; the landlord must then prove a
+    non-retaliatory reason.
+    5-a. Lease provisions charging fees for filing a good-faith complaint are void.
+    6. Does not apply to owner-occupied dwellings with fewer than four units, or where the
+    tenant/household/guest caused the condition.
+  key_facts:
+    presumption_window: "1 year after the complaint"
+    covers_non_renewal: true
+    exception: "owner-occupied buildings with < 4 units"
+  summary: >
+    A landlord may not evict, refuse to renew, or impose unreasonable new terms because a tenant
+    made a good-faith repair complaint to the landlord or to the City. Actions within one year
+    of the complaint are presumed retaliatory. Does not apply to owner-occupied buildings with
+    fewer than 4 units.
+  notes: >
+    PRD: 첫 Notice 생성 화면에 배치. 데모 페르소나의 "갱신 거절이 두려움"에 직접 대응.
+    ⚠ 소유자 거주 4세대 미만 예외 → 온보딩에서 건물 규모 확인 필요할 수 있음.
+
+- id: NYS-MDL-78
+  source: New York Multiple Dwelling Law
+  citation: "N.Y. Mult. Dwell. Law § 78"
+  title: Repairs
+  url: https://www.nysenate.gov/legislation/laws/MDW/78
+  issue_types: [all]
+  used_by: [notice, analysis]
+  text_type: summary
+  text: |
+    1. Every multiple dwelling, including its roof or roofs, and every part thereof and the lot
+    upon which it is situated, shall be kept in good repair. The owner shall be responsible for
+    compliance; a tenant is also liable for violations caused by the tenant's own wilful act,
+    assistance or negligence or that of a household member or guest.
+    2. The department may order the repair or improvement of any condition dangerous to life or
+    health.
+  summary: >
+    State law also requires owners of multiple dwellings (3+ units) to keep the building,
+    including the roof, in good repair.
+
+# ─────────────────────────────────────────────
+# 7. 신고 경로·다음 단계 (F3 Escalated / Recommended Next Steps)
+# ─────────────────────────────────────────────
+- id: HPD-COMPLAINT-PROCESS
+  source: NYC HPD
+  citation: "HPD, Report a Quality or Safety Issue"
+  title: How to file a complaint and what happens next
+  url: https://www.nyc.gov/site/hpd/services-and-information/report-a-maintenance-issue.page
+  issue_types: [all]
+  used_by: [escalation, assistant, verify]
+  text_type: summary
+  text: |
+    1. Contact your landlord first. If the landlord does not respond, file a complaint with 311.
+    2. File: call 311 (TTY 212-504-4115), 311ONLINE, or the 311MOBILE app. You receive a Service
+       Request number to track status on 311ONLINE or HPDONLINE.
+    3. HPD contacts the managing agent, then tries to call the tenant back. If the tenant says
+       the problem is fixed, HPD closes the complaint.
+    4. If not fixed or HPD cannot reach the tenant, an inspector is sent; the owner is not told
+       the inspection date.
+    5. If English is not your primary language, tell the inspector, who can call a translator.
+       HPD's "What to Expect" guide is available in English, Spanish, Traditional Chinese and
+       Korean.
+    6. If the owner certifies a fix, you get a notice by mail. If a reinspection finds the
+       condition still exists, the violation stays open.
+  key_facts:
+    phone: "311 / TTY 212-504-4115"
+    online: "https://portal.311.nyc.gov"
+    hpdonline: "https://hpdonline.nyc.gov"
+    caution: "Saying 'fixed' on HPD's callback closes the complaint"
+  summary: >
+    Notify the landlord first; if no response, file with 311 (phone, online, app). Only confirm
+    "fixed" on HPD's callback if the problem is really resolved — otherwise the complaint closes.
+  notes: >
+    ⭐ HPD 콜백에서 "고쳐졌다"고 답하면 민원 종결 → F4 검증 전 섣불리 답하지 않도록 안내.
+    311·HPDONLINE URL은 페이지 표기(구 www1 주소) 대신 현행 주소로 적음 — 배포 전 링크 재확인.
+
+- id: HPD-EMERGENCY-REPAIR
+  source: NYC HPD
+  citation: "HPD, Heat and Hot Water / Emergency Repair Program"
+  title: Emergency Repair Program
+  url: https://www.nyc.gov/site/hpd/services-and-information/heat-and-hot-water-information.page
+  issue_types: [heat, hot_water, leak]
+  used_by: [escalation, assistant]
+  text_type: summary
+  text: |
+    For immediately hazardous conditions (including no heat or hot water), if the owner does not
+    correct the condition after a violation is issued, HPD's Emergency Repair Program may
+    contract with private companies to make the repair and bill the owner. Status of HPD
+    emergency repair work in progress: 212-863-5510 (status only).
+  summary: >
+    If the landlord does not fix an immediately hazardous condition after HPD issues a
+    violation, HPD may make the repair itself and bill the owner.
+
+- id: HPD-HEAT-GUIDE
+  source: NYC HPD
+  citation: "HPD, Heat and Hot Water Information"
+  title: Heat and hot water — tenant guidance
+  url: https://www.nyc.gov/site/hpd/services-and-information/heat-and-hot-water-information.page
+  issue_types: [heat, hot_water]
+  used_by: [assistant, analysis]
+  text_type: summary
+  text: |
+    Heat season: October 1 – May 31. 6am–10pm: at least 68°F inside when outside is below 55°F.
+    10pm–6am: at least 62°F inside regardless of outside temperature. Hot water: 365 days per
+    year at a constant minimum of 120°F. Contact the landlord first; if not resolved, file a
+    complaint with 311. Complaints may be filed anonymously (an inspector then picks an
+    apartment at random).
+  summary: >
+    Plain-language version of the heat/hot water rules plus the 311 path. Anonymous complaints
+    are possible — relevant for tenants afraid of retaliation.
+
+- id: HPD-LL55-MOLD-GUIDE
+  source: NYC HPD
+  citation: "HPD, Indoor Allergen Hazards (Mold and Pests)"
+  title: Mold — tenant guidance (Local Law 55)
+  url: https://www.nyc.gov/site/hpd/services-and-information/indoor-allergen-hazards-mold-and-pests.page
+  issue_types: [mold, leak]
+  used_by: [assistant, analysis, verify]
+  text_type: summary
+  text: |
+    Local Law 55 of 2018 applies to buildings with three or more units: owners must keep
+    apartments free of mold and pests, inspect units annually, and fix underlying causes such as
+    leaks. In buildings with 10 or more units, mold over 10 square feet must be handled by a New
+    York State Department of Labor–licensed mold assessor and a separate licensed remediator.
+    Tenants: if you observe a leak, signs of mold, or pests, notify your landlord; if the
+    landlord does not act or the work is not done safely, file a complaint online or call 311.
+    If you or your child has asthma, your doctor can request a free home environmental
+    inspection through the NYC Health Department's Online Registry.
+  key_facts:
+    applies_to: "buildings with 3+ units"
+    licensed_contractor: "10+ units and mold > 10 sq ft"
+  summary: >
+    Mold law covers 3+ unit buildings. Owners must fix the leak causing mold, and large mold jobs
+    in 10+ unit buildings require licensed, independent assessor and remediator.
+  notes: >
+    F4: 큰 곰팡이 수리를 면허 업체 없이 "칠만 하고" 끝냈다면 Surface-only 판정 근거 보강 가능.
+
+- id: NYC-HOUSING-COURT
+  source: NY Courts / NYC HPD
+  citation: "NYC Housing Court — starting an HP proceeding"
+  title: Housing Court (HP proceeding) for repairs
+  url: http://www.courts.state.ny.us/courts/nyc/housing/startinghp.shtml
+  issue_types: [all]
+  used_by: [escalation, assistant]
+  text_type: summary
+  text: |
+    If a violation remains open, a tenant may take legal action against the landlord in Housing
+    Court to get repairs made. Tenants may seek free legal counsel if they qualify, or ask a
+    representative in any Housing Court for help filing a case.
+  summary: >
+    If repairs are still not made, a tenant can start a repair case (HP proceeding) in Housing
+    Court; free legal help may be available.
+  notes: 링크는 HPD 페이지에 실린 주소 그대로 — 배포 전 접속 확인 필요.

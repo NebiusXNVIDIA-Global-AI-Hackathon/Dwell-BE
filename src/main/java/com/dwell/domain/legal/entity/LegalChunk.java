@@ -29,13 +29,16 @@ public class LegalChunk extends BaseCreatedTimeEntity {
 
     @JdbcTypeCode(SqlTypes.VECTOR)
     @Array(length = 1024)
-    @Column(nullable = false)
-    private float[] embedding;
+    private float[] embedding; // null until an embedding model is available
 
     @Builder
     public LegalChunk(LegalDocument document, String content, float[] embedding) {
         this.document = document;
         this.content = content;
         this.embedding = embedding;
+    }
+
+    public void updateContent(String content) {
+        this.content = content;
     }
 }
