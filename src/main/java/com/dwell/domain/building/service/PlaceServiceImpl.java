@@ -2,6 +2,7 @@ package com.dwell.domain.building.service;
 
 import com.dwell.domain.building.dto.request.InspectionCreateRequest;
 import com.dwell.domain.building.dto.request.PlaceUpdateRequest;
+import com.dwell.domain.building.dto.response.AttentionResponse;
 import com.dwell.domain.building.dto.response.BuildingSignalsResponse;
 import com.dwell.domain.building.dto.response.CategoryCountResponse;
 import com.dwell.domain.building.dto.response.FollowUpTimerResponse;
@@ -97,6 +98,19 @@ public class PlaceServiceImpl implements PlaceService {
             IssueCategory.VENTILATION, List.of("Ventilation issues", "A few neighbors reported ventilation problems."),
             IssueCategory.SAFETY, List.of("Safety issues", "A few neighbors reported safety concerns."));
 
+    // Needs Your Attention 문구의 이슈 이름
+    private static final Map<IssueCategory, String> ATTENTION_NAMES = Map.of(
+            IssueCategory.HEAT_HOT_WATER, "Heat",
+            IssueCategory.WATER_FLOODING, "Water leak",
+            IssueCategory.PLUMBING, "Plumbing",
+            IssueCategory.MOLD_MOISTURE, "Mold",
+            IssueCategory.PESTS, "Pest",
+            IssueCategory.ELECTRICITY, "Electrical",
+            IssueCategory.GAS, "Gas",
+            IssueCategory.APPLIANCES, "Appliance",
+            IssueCategory.VENTILATION, "Ventilation",
+            IssueCategory.SAFETY, "Safety");
+
     private final UserPlaceRepository userPlaceRepository;
     private final BuildingSignalRepository buildingSignalRepository;
     private final HpdViolationRepository hpdViolationRepository;
@@ -125,6 +139,7 @@ public class PlaceServiceImpl implements PlaceService {
                 .address(toAddress(place))
                 .bbl(building.getBbl())
                 .risingIssues(toRisingIssues(signals, primary))
+                .attention(toAttention(signals))
                 .build();
     }
 
@@ -153,6 +168,17 @@ public class PlaceServiceImpl implements PlaceService {
 
         // 응답 반환 (바뀐 집 기준 내 건물 요약)
         return getSummary(userId);
+    }
+
+    // Needs Your Attention 서비스
+    @Override
+    public AttentionResponse getAttention(Long buildingId) {
+
+        // 건물 시그널 조회 (신고 많은 순)
+        List<BuildingSignal> signals = buildingSignalRepository.findAllByBuildingIdOrderByReportCountDescComputedAtDescIdDesc(buildingId);
+
+        // 응답 반환
+        return toAttention(signals);
     }
 
     // Building Signals 목록 서비스
@@ -423,6 +449,25 @@ public class PlaceServiceImpl implements PlaceService {
     }
 
     // ========== 헬퍼 함수 ==========
+
+    // Needs Your Attention 생성 (신고가 가장 많은 시그널 하나, 시그널이 없으면 null)
+    private AttentionResponse toAttention(List<BuildingSignal> signals) {
+
+        // 시그널이 없으면 null (카드 숨김)
+        if (signals.isEmpty()) {
+            return null;
+        }
+
+        // 신고가 가장 많은 시그널 (신고 많은 순이라 첫 번째)
+        BuildingSignal top = signals.get(0);
+
+        // 응답 세팅
+        return AttentionResponse.builder()
+                .text(new LocalizedText(ATTENTION_NAMES.get(top.getIssueCategory())
+                        + " issues have been reported a lot in your building lately.", null))
+                .signalId(top.getId())
+                .build();
+    }
 
     // 내 집 조회 (없으면 400)
     private UserPlace findPlace(Long userId) {

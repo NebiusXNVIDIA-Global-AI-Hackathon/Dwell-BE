@@ -19,4 +19,7 @@ public class PlaceSummaryResponse {
 
     @Schema(description = "Rising Issue 카드 (Building Signals의 Rising Issue와 같은 목록, 없으면 [] -> All clear!!!)")
     private List<SignalItemResponse> risingIssues;
+
+    @Schema(description = "Needs Your Attention 카드 (시그널이 없으면 null, 홈과 같은 값)")
+    private AttentionResponse attention;
 }
