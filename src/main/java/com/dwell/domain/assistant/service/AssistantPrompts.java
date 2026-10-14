@@ -1,47 +1,28 @@
 package com.dwell.domain.assistant.service;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import com.dwell.domain.legal.dto.LegalSource;
+
+import java.util.List;
 import java.util.stream.Collectors;
 
 /*
 Deaver 시스템 프롬프트 + 응답 형식
 - 모델은 답변 본문을 먼저 쓰고, 마지막에 META_MARKER 다음 줄에 JSON 한 줄(cards, quickReplies, action)을 붙임
 - 서버는 본문만 토큰으로 스트리밍하고, JSON은 검증해서 card / action / quick_replies 이벤트로 보냄
-- 법률 근거는 LEGAL_SOURCES 안의 id만 인용 가능 (서버가 목록에 없는 인용은 버림)
-  TODO: legal_chunk(RAG) 데이터가 들어오면 검색 결과로 교체
+- 법률 근거는 legal_document에서 검색한 목록(id + 요약)을 넣고, 모델은 그 안의 id만 인용 가능 (서버가 목록에 없는 인용은 버림)
  */
 final class AssistantPrompts {
 
     static final String META_MARKER = "###META###";
 
-    // 인용 가능한 법률 근거 (id -> [label, url]) — URL은 원문 조항이 아니라 공식 사이트 루트인 것도 있음, RAG 연결 시 교체
-    static final Map<String, String[]> LEGAL_SOURCES = new LinkedHashMap<>();
-
-    static {
-        LEGAL_SOURCES.put("HMC_27_2005", new String[]{"NYC Housing Maintenance Code §27-2005 (owner's duty to keep in good repair)",
-                "https://codelibrary.amlegal.com/codes/newyorkcity/latest/overview"});
-        LEGAL_SOURCES.put("HMC_27_2018", new String[]{"NYC Housing Maintenance Code §27-2018 (rodents, insects and other pests)",
-                "https://codelibrary.amlegal.com/codes/newyorkcity/latest/overview"});
-        LEGAL_SOURCES.put("HMC_27_2029", new String[]{"NYC Housing Maintenance Code §27-2029 (heat)",
-                "https://www.nyc.gov/site/hpd/services-and-information/heat-and-hot-water-information.page"});
-        LEGAL_SOURCES.put("HMC_27_2031", new String[]{"NYC Housing Maintenance Code §27-2031 (hot water)",
-                "https://www.nyc.gov/site/hpd/services-and-information/heat-and-hot-water-information.page"});
-        LEGAL_SOURCES.put("LL_55_2018", new String[]{"NYC Local Law 55 of 2018 (mold and pest allergens)",
-                "https://www.nyc.gov/site/hpd/index.page"});
-        LEGAL_SOURCES.put("RPL_235_B", new String[]{"NY Real Property Law §235-b (warranty of habitability)",
-                "https://www.nysenate.gov/legislation/laws/RPP/235-B"});
-        LEGAL_SOURCES.put("NYC_311", new String[]{"NYC 311 — report a housing condition to HPD",
-                "https://portal.311.nyc.gov/"});
-    }
-
     private AssistantPrompts() {
     }
 
     // 채팅 시스템 프롬프트
-    static String chatSystemPrompt(String userName, String preferredLanguage, String caseContext, String inspectionContext, String today) {
-        String sources = LEGAL_SOURCES.entrySet().stream()
-                .map(e -> "- " + e.getKey() + ": " + e.getValue()[0])
+    static String chatSystemPrompt(String userName, String preferredLanguage, String caseContext, String inspectionContext,
+                                   String today, List<LegalSource> legalSources) {
+        String sources = legalSources.stream()
+                .map(source -> "- " + source.code() + ": " + source.label() + " (" + source.title() + ") — " + source.summary())
                 .collect(Collectors.joining("\n"));
         String caseBlock = caseContext != null
                 ? "This chat is about the user's case:\n" + caseContext
@@ -59,7 +40,8 @@ final class AssistantPrompts {
 
                 Rules:
                 - Reply in the same language the user wrote in. Keep it short and practical (under 120 words). Plain text, no markdown headings.
-                - Never invent laws. When you state a legal rule, cite one of these sources by id in a LEGAL_RULE card. If none fits, say you are not sure and suggest 311 or a tenant lawyer.
+                - Never invent laws. Base legal statements only on the sources below, and cite one by id in a LEGAL_RULE card. If none fits, say you are not sure and suggest 311 or a tenant lawyer.
+                - Say what the landlord "may be required" to do; do not promise outcomes.
                 %s
                 - You are not a lawyer; give general information, not legal advice.
 

@@ -26,6 +26,8 @@ import com.dwell.domain.cases.service.CaseEventService;
 import com.dwell.domain.file.entity.File;
 import com.dwell.domain.file.enums.FilePurpose;
 import com.dwell.domain.file.repository.FileRepository;
+import com.dwell.domain.legal.dto.LegalSource;
+import com.dwell.domain.legal.service.LegalSourceService;
 import com.dwell.domain.notice.entity.LandlordResponse;
 import com.dwell.domain.notice.repository.LandlordResponseRepository;
 import com.dwell.domain.user.entity.User;
@@ -101,6 +103,7 @@ public class AssistantChatService {
     private final JsonMapper jsonMapper;
     private final TransactionTemplate transactionTemplate;
     private final AssistantMessageMapper messageMapper;
+    private final LegalSourceService legalSourceService;
 
     // 모델 호출은 응답 스레드를 막지 않도록 가상 스레드에서
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
@@ -263,7 +266,7 @@ public class AssistantChatService {
                 if (!(raw instanceof Map<?, ?> card) || cards.size() >= MAX_CARDS) {
                     continue;
                 }
-                Map<String, Object> validated = validateCard((Map<String, Object>) card, caseChat, citations);
+                Map<String, Object> validated = validateCard((Map<String, Object>) card, caseChat, context.legalSources(), citations);
                 if (validated != null) {
                     cards.add(validated);
                 }
@@ -309,7 +312,8 @@ public class AssistantChatService {
     }
 
     // 카드 검증 (모르는 타입·빈 본문·목록에 없는 법률 근거는 버림)
-    private Map<String, Object> validateCard(Map<String, Object> card, boolean caseChat, List<Map<String, Object>> citations) {
+    private Map<String, Object> validateCard(Map<String, Object> card, boolean caseChat, Map<String, LegalSource> legalSources,
+                                             List<Map<String, Object>> citations) {
         String type = String.valueOf(card.get("type"));
         if (!CARD_TYPES.contains(type) || !(card.get("body") instanceof String body) || body.isBlank()) {
             return null;
@@ -321,11 +325,11 @@ public class AssistantChatService {
 
         switch (type) {
             case "LEGAL_RULE" -> {
-                String[] source = AssistantPrompts.LEGAL_SOURCES.get(String.valueOf(card.get("citationId")));
+                LegalSource source = legalSources.get(String.valueOf(card.get("citationId")));
                 if (source == null) {
                     return null;
                 }
-                Map<String, Object> citation = Map.of("label", source[0], "url", source[1]);
+                Map<String, Object> citation = Map.of("label", source.label() + " (" + source.title() + ")", "url", source.url());
                 validated.put("citation", citation);
                 citations.add(citation);
             }
@@ -529,14 +533,21 @@ public class AssistantChatService {
     private ChatContext buildContext(Conversation conversation) {
         User user = conversation.getUser();
         Case caseEntity = conversation.getType() == ConversationType.CASE ? conversation.getCaseEntity() : null;
+        InspectionResult inspection = conversation.getType() == ConversationType.INSPECTION ? conversation.getInspection() : null;
+
+        // 법률 근거 검색: 케이스·확인 결과의 문제 유형에 맞는 조항 (일반 채팅이면 전체)
+        IssueCategory issue = caseEntity != null ? caseEntity.getIssueCategory()
+                : inspection != null ? inspection.getIssueCategory() : null;
+        List<LegalSource> legalSources = legalSourceService.findSources(issue, LegalSourceService.USAGE_ASSISTANT);
 
         List<LlmMessage> llmMessages = new ArrayList<>();
         llmMessages.add(LlmMessage.system(AssistantPrompts.chatSystemPrompt(
                 user.getNickname() == null ? "there" : user.getNickname(),
                 user.getPreferredLanguage(),
                 caseEntity == null ? null : caseContext(caseEntity),
-                conversation.getType() == ConversationType.INSPECTION ? inspectionContext(conversation.getInspection()) : null,
-                LocalDate.now().toString())));
+                inspectionContext(inspection),
+                LocalDate.now().toString(),
+                legalSources)));
 
         List<Message> recent = new ArrayList<>(messageRepository.findByConversationIdOrderByIdDesc(
                 conversation.getId(), PageRequest.of(0, HISTORY_SIZE)));
@@ -549,7 +560,9 @@ public class AssistantChatService {
             }
             llmMessages.add(message.getRole() == MessageRole.USER ? LlmMessage.user(content) : LlmMessage.assistant(content));
         }
-        return new ChatContext(conversation.getId(), conversation.getType(), llmMessages);
+        Map<String, LegalSource> sourcesByCode = legalSources.stream()
+                .collect(Collectors.toMap(LegalSource::code, source -> source));
+        return new ChatContext(conversation.getId(), conversation.getType(), llmMessages, sourcesByCode);
     }
 
     // 케이스 요약 (프롬프트용)
@@ -664,7 +677,8 @@ public class AssistantChatService {
         }
     }
 
-    private record ChatContext(Long conversationId, ConversationType type, List<LlmMessage> llmMessages) {
+    private record ChatContext(Long conversationId, ConversationType type, List<LlmMessage> llmMessages,
+                               Map<String, LegalSource> legalSources) {
     }
 
     private record ParsedMeta(List<Map<String, Object>> cards, List<Map<String, Object>> citations, List<String> quickReplies,
