@@ -31,8 +31,9 @@ import java.util.HexFormat;
 @Slf4j
 public class AuthService {
 
-    // 데모 계정 이메일 (V4 마이그레이션으로 생성)
-    private static final String DEMO_EMAIL = "demo01@example.com";
+    // 데모 계정 이메일 (회원 탈퇴 막을 때도 사용)
+    // UserService에서도 사용해야 되기 때문에 private -> public으로 변경
+    public static final String DEMO_EMAIL = "demo01@example.com";
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;

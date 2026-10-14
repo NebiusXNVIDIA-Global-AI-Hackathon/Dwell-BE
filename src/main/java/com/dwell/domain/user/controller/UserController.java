@@ -89,4 +89,17 @@ public class UserController {
         // 응답 반환
         return ResponseEntity.status(HttpStatus.OK).body(BaseResponse.success(200, "Profile updated successfully.", response));
     }
+
+    // 회원 탈퇴
+    @Operation(summary = "회원 탈퇴 API", description = "케이스, 증거, 파일(S3 포함), 채팅, 리프레시 토큰을 영구 삭제하는 API)커뮤니티 글과 댓글은 작성자를 Deleted user로 바꿔 유지, 데모 계정은 탈퇴 불가(403))")
+    @DeleteMapping("/users/me")
+    public ResponseEntity<Void> deleteMyAccount(
+            @AuthenticationPrincipal CustomUserDetails customUserDetails) {
+
+        // service 호출
+        userService.deleteMyAccount(customUserDetails.getUser().getId());
+
+        // 응답 반환
+        return ResponseEntity.noContent().build();
+    }
 }

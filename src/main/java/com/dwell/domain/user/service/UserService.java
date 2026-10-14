@@ -1,9 +1,13 @@
 package com.dwell.domain.user.service;
 
+import com.dwell.domain.auth.service.AuthService;
 import com.dwell.domain.building.entity.Building;
 import com.dwell.domain.building.entity.UserPlace;
+import com.dwell.domain.building.repository.InspectionResultRepository;
 import com.dwell.domain.building.repository.UserPlaceRepository;
 import com.dwell.domain.building.service.BuildingService;
+import com.dwell.domain.cases.repository.CaseRepository;
+import com.dwell.domain.community.repository.PostImageRepository;
 import com.dwell.domain.file.entity.File;
 import com.dwell.domain.file.enums.FilePurpose;
 import com.dwell.domain.file.exception.FileErrorCode;
@@ -40,6 +44,9 @@ public class UserService {
     private final FileRepository fileRepository;
     private final FileService fileService;
     private final S3Uploader s3Uploader;
+    private final CaseRepository caseRepository;
+    private final InspectionResultRepository inspectionResultRepository;
+    private final PostImageRepository postImageRepository;
 
     // 회원가입
     @Transactional
@@ -222,5 +229,45 @@ public class UserService {
 
         // 응답 반환
         return getMyProfile(userId);
+    }
+
+    // 회원 탈퇴 (Hard Delete 방식 : 케이스·증거·파일·채팅·Refresh Token 전부, 커뮤니티 글·댓글은 Deleted user로 유지)
+    @Transactional
+    public void deleteMyAccount(Long userId) {
+
+        // DB에서 사용자 조회
+        User user = userRepository.findById(userId).orElseThrow(() -> {
+            log.warn("[UserService] Account deletion failed: user not found: userId={}", userId);
+            return new CustomException(UserErrorCode.USER_NOT_FOUND);
+        });
+
+        // 데모 계정이면 X (지우면 모든 사람의 데모 로그인이 깨짐)
+        if (AuthService.DEMO_EMAIL.equals(user.getEmail())) {
+            log.warn("[UserService] Account deletion failed: demo account: userId={}", userId);
+            throw new CustomException(UserErrorCode.DEMO_ACCOUNT_CANNOT_BE_DELETED);
+        }
+
+        // 사용자가 올린 파일 전부 조회 (증거·프로필 사진·게시글 이미지·연결 안 된 업로드)
+        List<File> files = fileRepository.findAllByUserId(userId);
+
+        // 게시글 이미지 연결 삭제 (게시글은 남기고 사진만 제거, 파일보다 먼저 지워야 FK 에러가 안 남)
+        postImageRepository.deleteAllByFileUserId(userId);
+
+        // 파일 삭제 (DB는 바로, S3 원본은 커밋 뒤에)
+        fileService.deleteFiles(files);
+
+        // Check My Unit 결과 삭제 (연결된 채팅방은 DB의 ON DELETE CASCADE로 함께 삭제)
+        inspectionResultRepository.deleteAllByUserId(userId);
+
+        // 케이스 삭제 (증거·타임라인·체크리스트·Notice·검증·케이스 채팅은 DB의 ON DELETE CASCADE로 함께 삭제)
+        caseRepository.deleteAllByUserId(userId);
+
+        // 사용자 삭제 (Refresh Token·기기·집 정보·알림·채팅·좋아요는 CASCADE, 커뮤니티 글·댓글은 작성자만 NULL → Deleted user)
+        userRepository.delete(user);
+
+        // TODO : Building Signal·Insight는 다음 재계산 때 남아 있는 PUBLIC 케이스만 세면 자동으로 제외
+
+        // 로그 출력
+        log.info("[UserService] Account deleted: userId={}, files={}", userId, files.size());
     }
 }

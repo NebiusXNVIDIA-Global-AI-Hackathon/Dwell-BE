@@ -35,4 +35,9 @@ public interface PostImageRepository extends JpaRepository<PostImage, Long> {
     @Modifying
     @Query("delete from PostImage pi where pi.post = :post")
     void deleteAllByPost(Post post);
+
+    // 사용자가 올린 게시물 이미지 연결 삭제 (회원 탈퇴 시 게시물은 남기고 사진만 제거, 파일보다 먼저 바로 실행)
+    @Modifying
+    @Query("delete from PostImage pi where pi.file.id in (select f.id from File f where f.user.id = :userId)")
+    void deleteAllByFileUserId(Long userId);
 }

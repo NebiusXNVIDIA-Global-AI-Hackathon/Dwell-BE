@@ -18,4 +18,7 @@ public interface FileRepository extends JpaRepository<File, Long> {
 
     // 저장 경로로 파일 조회 (사용자에게는 프로필 사진 경로만 있어서, 이전 사진을 지울 때 사용)
     Optional<File> findByStorageKey(String storageKey);
+
+    // 사용자가 올린 파일 전부 (회원 탈퇴 시 정리용)
+    List<File> findAllByUserId(Long userId);
 }
