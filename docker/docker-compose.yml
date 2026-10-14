@@ -36,6 +36,9 @@ services:
     environment:
       DB_URL: jdbc:postgresql://db:5432/dwell
       TZ: America/New_York
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcp-sa.json # Tuned Gemini (Vertex AI); no key file = vision analysis skipped
+    volumes:
+      - ../secrets:/run/secrets:ro
 
 volumes:
   postgres_data:

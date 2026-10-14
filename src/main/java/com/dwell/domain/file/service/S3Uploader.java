@@ -54,6 +54,11 @@ public class S3Uploader {
         return s3Presigner.presignGetObject(presignRequest).url().toString();
     }
 
+    // AI 분석용 원본 읽기
+    public byte[] download(String key) {
+        return s3Client.getObjectAsBytes(GetObjectRequest.builder().bucket(bucket).key(key).build()).asByteArray();
+    }
+
     public void delete(String key) {
         s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
     }

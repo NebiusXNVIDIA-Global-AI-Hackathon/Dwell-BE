@@ -1,5 +1,6 @@
 package com.dwell.domain.cases.service;
 
+import com.dwell.domain.analysis.event.CaseAnalysisRequestedEvent;
 import com.dwell.domain.building.entity.Building;
 import com.dwell.domain.building.entity.UserPlace;
 import com.dwell.domain.building.repository.UserPlaceRepository;
@@ -41,6 +42,7 @@ import com.dwell.global.common.enums.MediaType;
 import com.dwell.global.exception.CustomException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -72,6 +74,7 @@ public class CaseService {
     private final UserRepository userRepository;
     private final UserPlaceRepository userPlaceRepository;
     private final FileService fileService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public CaseOverviewResponse getCaseOverview(Long caseId, Long userId) {
 
@@ -356,7 +359,9 @@ public class CaseService {
         // DB 저장
         caseEventRepository.save(caseEvent);
 
-        // TODO AI 분석 비동기 시작 (severity·title·analysis·checklist 생성 후 analysisStatus = DONE)
+        // AI 심각도 분석 비동기 시작 (커밋 후, 끝나면 severity·aiAnalysis 저장 + analysisStatus = DONE)
+        // TODO : title·checklist 생성
+        eventPublisher.publishEvent(new CaseAnalysisRequestedEvent(savedCase.getId()));
 
         // 로그 출력
         log.info("[CaseService] Case created: caseId={}, caseNumber={}, files={}", savedCase.getId(), savedCase.getCaseNumber(), files.size());
@@ -407,7 +412,8 @@ public class CaseService {
         // 증거가 늘었으니 케이스 분석·심각도 재계산 대기 (변경 감지로 저장)
         caseEntity.markAnalysisPending();
 
-        // TODO : AI 분석 비동기 재시작 (severity·analysis 재계산 후 analysisStatus = DONE)
+        // AI 심각도 분석 비동기 재시작 (새 증거 판정 + 케이스 severity 재계산)
+        eventPublisher.publishEvent(new CaseAnalysisRequestedEvent(caseId));
         // TODO : phase가 AFTER_REPAIR면 수리 전후 비교 검증 시작
 
         // 로그 출력
@@ -521,7 +527,7 @@ public class CaseService {
     }
 
     // 와프 형식: "123 Main St, Apt 4B" (unit은 "Apt 4B" 형태로 저장됨)
-    private String toAddress(Case caseEntity) {
+    String toAddress(Case caseEntity) {
         Building building = caseEntity.getBuilding();
         if (building == null) {
             return null;

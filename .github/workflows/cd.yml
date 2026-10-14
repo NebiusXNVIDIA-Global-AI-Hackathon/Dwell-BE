@@ -82,7 +82,17 @@ jobs:
             AWS_S3_BUCKET=${{ secrets.AWS_S3_BUCKET }}
 
             NEBIUS_API_KEY=${{ secrets.NEBIUS_API_KEY }}
+
+            GEMINI_ENDPOINT_URL=https://aiplatform.us.rep.googleapis.com/v1/projects/dwell-511305/locations/us/endpoints/4997236367776808960:generateContent
             EOF
+
+            # Google service account key for the tuned Gemini endpoint (mounted read-only into the app container)
+            mkdir -p secrets
+            GCP_SA_KEY_BASE64='${{ secrets.GCP_SA_KEY_BASE64 }}'
+            if [ -n "$GCP_SA_KEY_BASE64" ]; then
+              echo "$GCP_SA_KEY_BASE64" | base64 -d > secrets/gcp-sa.json
+              chmod 644 secrets/gcp-sa.json
+            fi
 
             docker compose --env-file .env -f docker/docker-compose.yml pull app
             docker compose --env-file .env -f docker/docker-compose.yml up -d

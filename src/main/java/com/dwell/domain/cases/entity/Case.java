@@ -121,7 +121,7 @@ public class Case extends BaseTimeEntity {
     @Column(nullable = false, length = 10)
     private AnalysisStatus analysisStatus;
 
-    // {findings:[{en,native}], recommended_type, alternatives:[type]}
+    // Severity assessment: {severityReasons:[{en,native}], visionSeverity, finalSeverity, progression, needsRetake, proposedSlaHours, ...}
     @JdbcTypeCode(SqlTypes.JSON)
     private Map<String, Object> aiAnalysis;
 
@@ -179,5 +179,16 @@ public class Case extends BaseTimeEntity {
     // 증거가 바뀌어 AI 분석을 다시 해야 할 때
     public void markAnalysisPending() {
         this.analysisStatus = AnalysisStatus.PENDING;
+    }
+
+    // AI 심각도 분석 결과 반영 (Inconclusive면 severity = null)
+    public void applyAnalysis(Severity severity, Map<String, Object> aiAnalysis) {
+        this.severity = severity;
+        this.aiAnalysis = aiAnalysis;
+        this.analysisStatus = AnalysisStatus.DONE;
+    }
+
+    public void markAnalysisFailed() {
+        this.analysisStatus = AnalysisStatus.FAILED;
     }
 }
