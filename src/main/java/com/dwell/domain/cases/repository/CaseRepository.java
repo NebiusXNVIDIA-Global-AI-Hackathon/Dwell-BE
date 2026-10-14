@@ -28,6 +28,9 @@ public interface CaseRepository extends JpaRepository<Case, Long> {
             + "and c.stage <> com.dwell.domain.cases.enums.CaseStage.RESOLVED")
     List<IssueCategory> findActiveIssueCategoriesByUserId(Long userId);
 
+    // 사용자의 진행 중 케이스 (Resolved·삭제 제외, 홈 카드용)
+    List<Case> findAllByUserIdAndDeletedAtIsNullAndStageNot(Long userId, CaseStage stage);
+
     // 사용자의 케이스 삭제 (회원 탈퇴 시, 증거·타임라인 등은 DB의 ON DELETE CASCADE)
     void deleteAllByUserId(Long userId);
 }

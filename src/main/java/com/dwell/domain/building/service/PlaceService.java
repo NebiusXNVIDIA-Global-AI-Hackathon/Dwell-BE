@@ -2,6 +2,7 @@ package com.dwell.domain.building.service;
 
 import com.dwell.domain.building.dto.request.InspectionCreateRequest;
 import com.dwell.domain.building.dto.request.PlaceUpdateRequest;
+import com.dwell.domain.building.dto.response.AttentionResponse;
 import com.dwell.domain.building.dto.response.BuildingSignalsResponse;
 import com.dwell.domain.building.dto.response.HpdHistoryResponse;
 import com.dwell.domain.building.dto.response.InspectionCreateResponse;
@@ -34,6 +35,17 @@ public interface PlaceService {
      * @return PlaceSummaryResponse(address, bbl, risingIssues)
      */
     PlaceSummaryResponse updatePlace(Long userId, PlaceUpdateRequest request);
+
+    /**
+     * [Needs Your Attention 서비스]
+     * @author 김정모
+     * @description: 건물 시그널 중 신고가 가장 많은 시그널 하나로 카드 문구와 signalId를 줍니다 (홈, 내 건물 요약 공통).
+     *               Check my unit이 시그널 하나 단위라 문구도 이슈 하나로 만듭니다. 시그널이 없으면 null입니다.
+     *
+     * @request buildingId
+     * @return AttentionResponse(text, signalId) 또는 null
+     */
+    AttentionResponse getAttention(Long buildingId);
 
     /**
      * [Building Signals 목록 서비스]

@@ -2,6 +2,7 @@ package com.dwell.domain.building.service;
 
 import com.dwell.domain.building.dto.request.InspectionCreateRequest;
 import com.dwell.domain.building.dto.request.PlaceUpdateRequest;
+import com.dwell.domain.building.dto.response.AttentionResponse;
 import com.dwell.domain.building.dto.response.BuildingSignalsResponse;
 import com.dwell.domain.building.dto.response.HpdHistoryResponse;
 import com.dwell.domain.building.dto.response.LandlordInsightResponse;
@@ -298,6 +299,31 @@ class PlaceServiceImplTest {
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode").isEqualTo(BuildingErrorCode.PLACE_NOT_REGISTERED);
         verifyNoInteractions(buildingService);
+    }
+
+    @Test
+    @DisplayName("Needs Your Attention: 신고가 가장 많은 시그널 하나로 문구와 signalId")
+    void getAttention() {
+        BuildingSignal pests = mock(BuildingSignal.class);
+        given(pests.getId()).willReturn(13L);
+        given(pests.getIssueCategory()).willReturn(IssueCategory.PESTS);
+        BuildingSignal heat = mock(BuildingSignal.class);
+        given(buildingSignalRepository.findAllByBuildingIdOrderByReportCountDescComputedAtDescIdDesc(10L))
+                .willReturn(List.of(pests, heat));
+
+        AttentionResponse attention = placeService.getAttention(10L);
+
+        assertThat(attention.getSignalId()).isEqualTo(13L);
+        assertThat(attention.getText().en()).isEqualTo("Pest issues have been reported a lot in your building lately.");
+        assertThat(attention.getText().nativeText()).isNull();
+    }
+
+    @Test
+    @DisplayName("Needs Your Attention: 시그널이 없으면 null (카드 숨김)")
+    void getAttentionWithoutSignal() {
+        given(buildingSignalRepository.findAllByBuildingIdOrderByReportCountDescComputedAtDescIdDesc(10L)).willReturn(List.of());
+
+        assertThat(placeService.getAttention(10L)).isNull();
     }
 
     private Building realBuilding(Long id, String street) {
