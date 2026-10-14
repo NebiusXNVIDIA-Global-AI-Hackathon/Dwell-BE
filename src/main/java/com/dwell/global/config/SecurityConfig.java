@@ -54,9 +54,9 @@ public class SecurityConfig {
                         // Sign-up, login, etc. are accessible without authentication
                         .requestMatchers(
                                 "/api/v1/auth/**",
-                                "/api/v1/user/signup",
-                                "/api/v1/user/email-availability",
-                                "/api/v1/user/nickname-availability"
+                                "/api/v1/users/signup",
+                                "/api/v1/users/email-availability",
+                                "/api/v1/users/nickname-availability"
                         ).permitAll()
 
                         // Admin and demo APIs (job run, time shift) require the ADMIN role
