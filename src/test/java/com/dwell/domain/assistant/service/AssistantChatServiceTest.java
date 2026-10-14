@@ -12,6 +12,7 @@ import com.dwell.domain.assistant.repository.ConversationRepository;
 import com.dwell.domain.assistant.repository.MessageRepository;
 import com.dwell.domain.cases.service.CaseEventService;
 import com.dwell.domain.file.repository.FileRepository;
+import com.dwell.domain.legal.service.LegalSourceService;
 import com.dwell.domain.notice.repository.LandlordResponseRepository;
 import com.dwell.domain.user.entity.User;
 import com.dwell.global.ai.NebiusChatClient;
@@ -58,13 +59,16 @@ class AssistantChatServiceTest {
     private TransactionTemplate transactionTemplate;
     @Mock
     private AssistantMessageMapper messageMapper;
+    @Mock
+    private LegalSourceService legalSourceService;
 
     private AssistantChatService chatService;
 
     @BeforeEach
     void setUp() {
         chatService = new AssistantChatService(conversationRepository, messageRepository, assistantActionRepository, fileRepository,
-                landlordResponseRepository, caseEventService, chatClient, JsonMapper.builder().build(), transactionTemplate, messageMapper);
+                landlordResponseRepository, caseEventService, chatClient, JsonMapper.builder().build(), transactionTemplate, messageMapper,
+                legalSourceService);
     }
 
     @Test
