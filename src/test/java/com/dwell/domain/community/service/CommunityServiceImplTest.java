@@ -12,7 +12,10 @@ import com.dwell.domain.community.dto.response.ReplyResponse;
 import com.dwell.domain.community.entity.Reply;
 import com.dwell.domain.community.enums.Board;
 import com.dwell.domain.community.enums.BoardFilter;
+import com.dwell.domain.community.dto.response.MyPostListResponse;
+import com.dwell.domain.community.dto.response.MyReplyListResponse;
 import com.dwell.domain.community.dto.response.PostListResponse;
+import com.dwell.domain.community.enums.Board;
 import com.dwell.domain.community.dto.response.TagSuggestionResponse;
 import com.dwell.domain.community.dto.request.LandlordPostSearchRequest;
 import com.dwell.domain.community.dto.response.LandlordPostListResponse;
@@ -517,6 +520,88 @@ class CommunityServiceImplTest {
         assertThat(captor.getValue().getContent()).isEqualTo("Same here.");
         assertThat(captor.getValue().getFloorBand()).isEqualTo(FloorBand.UPPER);
         assertThat(replyId).isEqualTo(78L);
+    }
+
+    @Test
+    @DisplayName("내 게시물: 지금 내 건물 글을 와프 카드 필드로, 탭 숫자(게시물 수 = 전체 개수, 댓글 수) 포함")
+    void getMyPosts() {
+        UserPlace place = placeIn(building(10L));
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.of(place));
+        Post post = mock(Post.class, withSettings().strictness(Strictness.LENIENT));
+        given(post.getId()).willReturn(40L);
+        given(post.getTitle()).willReturn("Pipe burst in my unit");
+        given(post.getBoard()).willReturn(Board.FREE);
+        given(post.getContent()).willReturn("Water everywhere");
+        given(postRepository.findByUserIdAndBuildingIdOrderByCreatedAtDescIdDesc(eq(1L), eq(10L), any()))
+                .willReturn(new PageImpl<>(List.of(post), PageRequest.of(0, 20), 1));
+        given(replyRepository.countByUserIdAndPostBuildingId(1L, 10L)).willReturn(5L);
+        given(postRepository.findAllById(List.of(40L))).willReturn(List.of(post));
+        given(postTagRepository.findTagNamesByPostIds(List.of(40L))).willReturn(List.<Object[]>of(new Object[]{40L, "ceilingleak"}));
+        given(postImageRepository.findThumbnailKeysByPostIds(List.of(40L))).willReturn(List.of());
+        given(postLikeRepository.countByPostIds(List.of(40L))).willReturn(List.<Object[]>of(new Object[]{40L, 9L}));
+        given(replyRepository.countByPostIds(List.of(40L))).willReturn(List.<Object[]>of(new Object[]{40L, 2L}));
+
+        MyPostListResponse response = communityService.getMyPosts(1L, 0, 20);
+
+        assertThat(response.getCounts().getPosts()).isEqualTo(1L);
+        assertThat(response.getCounts().getReplies()).isEqualTo(5L);
+        assertThat(response.getContent()).singleElement().satisfies(card -> {
+            assertThat(card.getPostId()).isEqualTo(40L);
+            assertThat(card.getTitle()).isEqualTo("Pipe burst in my unit");
+            assertThat(card.getBoard()).isEqualTo(Board.FREE);
+            assertThat(card.getTags()).containsExactly("#ceilingleak");
+            assertThat(card.getLikeCount()).isEqualTo(9L);
+            assertThat(card.getReplyCount()).isEqualTo(2L);
+        });
+        assertThat(response.isHasNext()).isFalse();
+    }
+
+    @Test
+    @DisplayName("내 게시물: 집 등록이 없으면 PLACE_NOT_REGISTERED")
+    void getMyPostsWithoutPlace() {
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> communityService.getMyPosts(1L, 0, 20))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(CommunityErrorCode.PLACE_NOT_REGISTERED);
+        verifyNoInteractions(postRepository);
+    }
+
+    @Test
+    @DisplayName("내 댓글: 지금 내 건물 글에 단 댓글을 게시물 제목과 함께")
+    void getMyReplies() {
+        UserPlace place = placeIn(building(10L));
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.of(place));
+        Post post = mock(Post.class);
+        given(post.getId()).willReturn(31L);
+        given(post.getTitle()).willReturn("Floor 5 — our leak came back after repair");
+        Reply reply = mock(Reply.class);
+        given(reply.getId()).willReturn(77L);
+        given(reply.getPost()).willReturn(post);
+        given(reply.getContent()).willReturn("Same here. Ours started after the repair too.");
+        given(replyRepository.findByUserIdAndPostBuildingIdOrderByCreatedAtDescIdDesc(eq(1L), eq(10L), any()))
+                .willReturn(new PageImpl<>(List.of(reply), PageRequest.of(0, 20), 1));
+
+        MyReplyListResponse response = communityService.getMyReplies(1L, 0, 20);
+
+        assertThat(response.getTotalElements()).isEqualTo(1L);
+        assertThat(response.getContent()).singleElement().satisfies(card -> {
+            assertThat(card.getReplyId()).isEqualTo(77L);
+            assertThat(card.getPostId()).isEqualTo(31L);
+            assertThat(card.getPostTitle()).isEqualTo("Floor 5 — our leak came back after repair");
+            assertThat(card.getContent()).isEqualTo("Same here. Ours started after the repair too.");
+        });
+    }
+
+    @Test
+    @DisplayName("내 댓글: 집 등록이 없으면 PLACE_NOT_REGISTERED")
+    void getMyRepliesWithoutPlace() {
+        given(userPlaceRepository.findByUserId(1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> communityService.getMyReplies(1L, 0, 20))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(CommunityErrorCode.PLACE_NOT_REGISTERED);
+        verifyNoInteractions(replyRepository);
     }
 
     private ReplyCreateRequest replyRequest(String content) {

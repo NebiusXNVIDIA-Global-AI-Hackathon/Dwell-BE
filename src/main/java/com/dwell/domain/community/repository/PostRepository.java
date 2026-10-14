@@ -11,6 +11,9 @@ import java.util.List;
 
 public interface PostRepository extends JpaRepository<Post, Long> {
 
+    // 내가 쓴 게시물 (지금 내 건물, 최신 순, My Activities Posts 탭)
+    Page<Post> findByUserIdAndBuildingIdOrderByCreatedAtDescIdDesc(Long userId, Long buildingId, Pageable pageable);
+
     // 내 건물 게시물 ID 목록 (게시판·제목·태그 필터)
     // recommended면 내 케이스 관련 태그가 있는 글 -> 좋아요 많은 글 -> 최신 순, 아니면 최신 순
     // null 파라미터는 PostgreSQL이 타입을 못 정해서 cast, keywords는 빈 목록이면 IN ()이 깨져서 호출 쪽에서 빈 값 하나를 넣음
