@@ -26,7 +26,7 @@ public class UserController {
 
     // 회원가입
     @Operation(summary = "Sign up", description = "Registers a user with account info and home address.")
-    @PostMapping("/user/signup")
+    @PostMapping("/users/signup")
     public ResponseEntity<BaseResponse<UserSignUpResponse>> signUp(
             @Valid @RequestBody UserSignUpRequest request) {
 
@@ -39,7 +39,7 @@ public class UserController {
 
     // 이메일 중복 조회
     @Operation(summary = "Check email availability", description = "Returns true if the email is not taken.")
-    @GetMapping("/user/email-availability")
+    @GetMapping("/users/email-availability")
     public ResponseEntity<BaseResponse<Boolean>> checkEmail(
             @RequestParam String email) {
 
@@ -52,7 +52,7 @@ public class UserController {
 
     // 닉네임 중복 조회
     @Operation(summary = "Check nickname availability", description = "Returns true if the nickname is not taken.")
-    @GetMapping("/user/nickname-availability")
+    @GetMapping("/users/nickname-availability")
     public ResponseEntity<BaseResponse<Boolean>> checkNickname(
             @RequestParam String nickname) {
 
@@ -65,7 +65,7 @@ public class UserController {
 
     // 내 정보 조회
     @Operation(summary = "내 정보 조회 API", description = "My Page, Manage Profile 화면의 닉네임, 이메일, 선호 언어, 프로필 사진, 주소를 조회하는 API")
-    @GetMapping("/user/me")
+    @GetMapping("/users/me")
     public ResponseEntity<BaseResponse<UserProfileResponse>> getMyProfile(
             @AuthenticationPrincipal CustomUserDetails customUserDetails) {
 
@@ -78,7 +78,7 @@ public class UserController {
 
     // 내 정보 수정
     @Operation(summary = "내 정보 수정 API", description = "Manage Profile 화면에서 닉네임, 선호 언어, 프로필 사진을 수정하는 API. 사진은 POST /files(purpose=PROFILE_IMAGE)로 먼저 올리고, 이전 사진은 삭제. 이메일은 수정 불가")
-    @PatchMapping("/user/me")
+    @PatchMapping("/users/me")
     public ResponseEntity<BaseResponse<UserProfileResponse>> updateMyProfile(
             @AuthenticationPrincipal CustomUserDetails customUserDetails,
             @Valid @RequestBody UserProfileUpdateRequest request) {
