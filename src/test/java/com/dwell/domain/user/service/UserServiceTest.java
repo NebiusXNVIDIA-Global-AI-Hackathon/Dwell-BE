@@ -1,10 +1,14 @@
 package com.dwell.domain.user.service;
 
+import com.dwell.domain.auth.service.AuthService;
 import com.dwell.domain.building.entity.Building;
 import com.dwell.domain.building.entity.UserPlace;
 import com.dwell.domain.building.enums.UsState;
+import com.dwell.domain.building.repository.InspectionResultRepository;
 import com.dwell.domain.building.repository.UserPlaceRepository;
 import com.dwell.domain.building.service.BuildingService;
+import com.dwell.domain.cases.repository.CaseRepository;
+import com.dwell.domain.community.repository.PostImageRepository;
 import com.dwell.domain.file.entity.File;
 import com.dwell.domain.file.enums.FilePurpose;
 import com.dwell.domain.file.exception.FileErrorCode;
@@ -22,6 +26,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -54,13 +59,19 @@ class UserServiceTest {
     private FileService fileService;
     @Mock
     private S3Uploader s3Uploader;
+    @Mock
+    private CaseRepository caseRepository;
+    @Mock
+    private InspectionResultRepository inspectionResultRepository;
+    @Mock
+    private PostImageRepository postImageRepository;
 
     private UserService userService;
 
     @BeforeEach
     void setUp() {
         userService = new UserService(userRepository, userPlaceRepository, buildingService, passwordEncoder,
-                fileRepository, fileService, s3Uploader);
+                fileRepository, fileService, s3Uploader, caseRepository, inspectionResultRepository, postImageRepository);
     }
 
     @Test
@@ -237,6 +248,52 @@ class UserServiceTest {
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode").isEqualTo(FileErrorCode.NOT_PROFILE_IMAGE_FILE);
         assertThat(user.getProfileImageKey()).isNull();
+    }
+
+    @Test
+    @DisplayName("회원 탈퇴: 게시글 이미지 → 파일 → 검사 결과 → 케이스 → 사용자 순서로 삭제")
+    void deleteMyAccount() {
+        User user = userOf(1L, null);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        File file = mock(File.class);
+        given(fileRepository.findAllByUserId(1L)).willReturn(List.of(file));
+
+        userService.deleteMyAccount(1L);
+
+        InOrder inOrder = inOrder(postImageRepository, fileService, inspectionResultRepository, caseRepository, userRepository);
+        inOrder.verify(postImageRepository).deleteAllByFileUserId(1L);
+        inOrder.verify(fileService).deleteFiles(List.of(file));
+        inOrder.verify(inspectionResultRepository).deleteAllByUserId(1L);
+        inOrder.verify(caseRepository).deleteAllByUserId(1L);
+        inOrder.verify(userRepository).delete(user);
+    }
+
+    @Test
+    @DisplayName("회원 탈퇴: 데모 계정이면 DEMO_ACCOUNT_CANNOT_BE_DELETED, 아무것도 삭제 X")
+    void deleteDemoAccount() {
+        User demo = User.builder()
+                .email(AuthService.DEMO_EMAIL)
+                .nickname("demo1")
+                .role(Role.USER)
+                .build();
+        ReflectionTestUtils.setField(demo, "id", 1L);
+        given(userRepository.findById(1L)).willReturn(Optional.of(demo));
+
+        assertThatThrownBy(() -> userService.deleteMyAccount(1L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(UserErrorCode.DEMO_ACCOUNT_CANNOT_BE_DELETED);
+        verifyNoInteractions(fileService, caseRepository, inspectionResultRepository, postImageRepository);
+        verify(userRepository, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("회원 탈퇴: 없는 사용자면 USER_NOT_FOUND")
+    void deleteAccountUserNotFound() {
+        given(userRepository.findById(1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.deleteMyAccount(1L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode").isEqualTo(UserErrorCode.USER_NOT_FOUND);
     }
 
     // ========== 픽스처 ==========
