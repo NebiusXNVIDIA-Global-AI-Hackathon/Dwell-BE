@@ -21,8 +21,12 @@ public class CorsConfig {
 
         CorsConfiguration config = new CorsConfiguration();
 
-        // Allow only origins defined in the environment variable
-        config.setAllowedOrigins(Arrays.asList(allowedOrigins));
+        // Allow only origins defined in the environment variable (spaces after commas and a trailing slash are ignored)
+        config.setAllowedOrigins(Arrays.stream(allowedOrigins)
+                .map(String::strip)
+                .map(origin -> origin.endsWith("/") ? origin.substring(0, origin.length() - 1) : origin)
+                .filter(origin -> !origin.isEmpty())
+                .toList());
 
         // Allowed HTTP methods
         config.setAllowedMethods(

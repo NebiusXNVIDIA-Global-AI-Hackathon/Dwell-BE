@@ -15,7 +15,7 @@ public class SwaggerConfig {
 
     private static final String BEARER_SCHEME_NAME = "bearerAuth";
 
-    @Value("${swagger.server-url:http://localhost:8080}")
+    @Value("${swagger.server-url:/}")
     private String serverUrl;
 
     @Bean
