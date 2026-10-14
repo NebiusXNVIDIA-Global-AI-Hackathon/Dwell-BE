@@ -122,6 +122,32 @@ public class AuthService {
                 .build();
     }
 
+    // 로그아웃
+    @Transactional
+    public void logout(RefreshTokenRequest request) {
+
+        // DB에서 Refresh Token 조회 (DB에는 해시로 저장되어 있어서 해시로 조회)
+        RefreshToken refreshToken = refreshTokenRepository.findByTokenHash(hash(request.getRefreshToken())).orElse(null);
+
+        // 없는 토큰이면 이미 사용할 수 없는 상태라 끝
+        if (refreshToken == null) {
+            log.warn("[AuthService] Logout: refresh token not found");
+            return;
+        }
+
+        // 이미 폐기된 토큰이면 끝
+        if (refreshToken.getRevokedAt() != null) {
+            log.warn("[AuthService] Logout: refresh token already revoked: refreshTokenId={}", refreshToken.getId());
+            return;
+        }
+
+        // Refresh Token 폐기 (변경 감지로 저장)
+        refreshToken.revoke();
+
+        // 로그 출력
+        log.info("[AuthService] Logout completed: userId={}", refreshToken.getUser().getId());
+    }
+
     // ========== 헬퍼 함수 ==========
 
     // Access Token, Refresh Token 발급 후 응답 세팅 (로그인, 데모 로그인 공통)
